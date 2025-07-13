@@ -1,5 +1,10 @@
 = vLLM & Performance Tuning
 
+== Existing Slides
+
+. PSAP LLM Performance Benchmarking - July 11 2025 +
+https://docs.google.com/presentation/d/1IXReNsWRUcy1C9nGsnnhkG_H-OG5UQ2nYS2KmrXr340/edit?usp=sharing[^]
+
 == Existing lab resources
 
 . Training: vLLM Master Class: +

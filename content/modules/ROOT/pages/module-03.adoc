@@ -3,14 +3,16 @@
 == Existing lab resources
 
 . GuideLLM notebook and lab +
-https://redhatquickcourses.github.io/genai-vllm/genai-vllm/1/rhoai_deploy/rhoai_query.html[^] +
-Link to Git repo with code +
-https://github.com/RedHatQuickCourses/genai-apps.git[^] +
-Performance benchmarking with GuideLLM + 
+https://redhatquickcourses.github.io/genai-vllm/genai-vllm/1/rhoai_deploy/rhoai_query.html[^]
+
+. Link to Git repo with code +
+https://github.com/RedHatQuickCourses/genai-apps.git[^]
+
+. Performance benchmarking with GuideLLM + 
 https://redhatquickcourses.github.io/genai-vllm/genai-vllm/1/rhoai_deploy/guide_llm.html[^]
 
 . evals_workshop +
-https://github.com/taylorjordanNC/evals_workshop
+https://github.com/taylorjordanNC/evals_workshop[^]
 
 == Potential Topics to Cover in the Lab
 

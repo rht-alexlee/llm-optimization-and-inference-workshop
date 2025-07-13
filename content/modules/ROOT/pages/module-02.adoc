@@ -1,5 +1,10 @@
 = LLM Compressor, Model Quantization and Sparsification techniques and recipes
 
+== Existing slides
+
+. LLM compressor walkthrough +
+https://docs.google.com/presentation/d/16ZbZh4dm_4FZ6drgHwfTSn-KHhkzWNqD9RKnwtWROWU/edit?slide=id.p#slide=id.p[^]
+
 == Existing lab resources
 
 . Summit lab for LLM compression +
