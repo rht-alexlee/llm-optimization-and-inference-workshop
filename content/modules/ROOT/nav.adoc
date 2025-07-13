@@ -1,7 +1,16 @@
-* xref:module-01.adoc[1. RPM Native Container]
-** xref:module-01.adoc#repositories[Repositories]
-** xref:module-01.adoc#software[Software]
+* xref:module-01.adoc[1. vLLM & Performance Tuning]
+** xref:module-01.adoc#secure_vllm_endpoints[Securing vLLM Endpoints]
+** xref:module-01.adoc#troubleshooting[Troubleshooting]
+** xref:module-01.adoc#configuration[Configuration]
 
-* xref:module-02.adoc[2. GitHub Sourced Container]
-** xref:module-02.adoc#prerequisites[Install Prerequisites]
-** xref:module-02.adoc#container[Enable Container]
+* xref:module-02.adoc[2. LLM Compressor, Model Quantization and Sparsification]
+** xref:module-02.adoc#llm_compressor[LLM Compressor]
+
+* xref:module-03.adoc[3. LLM evaluation with GuideLLM]
+** xref:module-03.adoc#load_test[Load Testing]
+
+* xref:module-04.adoc[4. RH Inference Server on Multiple Platforms]
+** xref:module-04.adoc#rhel[RHEL]
+** xref:module-04.adoc#ocp[OpenShift]
+** xref:module-04.adoc#rhoai[OpenShift AI]
+** xref:module-04.adoc#ubuntu[Ubuntu]

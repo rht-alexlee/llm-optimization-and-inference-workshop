@@ -1,12 +1,12 @@
 name: modules
-title: Default Title
+title: LLM optimization and inferencing
 version: master
 nav:
   - modules/ROOT/nav.adoc
 
 asciidoc:
   attributes:
-    lab_name: "I'm the lab_name var"
+    lab_name: "LLM optimization and inferencing"
     release-version: master
     page-pagination: true
     my_var: "foo"
