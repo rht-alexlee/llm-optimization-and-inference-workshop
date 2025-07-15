@@ -14,3 +14,5 @@
 ** xref:module-04.adoc#ocp[OpenShift]
 ** xref:module-04.adoc#rhoai[OpenShift AI]
 ** xref:module-04.adoc#ubuntu[Ubuntu]
+
+* xref:llm-compressor-01.adoc[X. Draft - LLM Compressor]
