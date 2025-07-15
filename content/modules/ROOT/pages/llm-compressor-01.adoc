@@ -1,5 +1,6 @@
 = LLM Compressor: Executive Guide
 
+[#executive-summary]
 == Executive Summary
 
 The exponential growth of Large Language Models has created a fundamental challenge: state-of-the-art AI models are becoming too large and expensive for most organizations to deploy effectively. LLM Compressor addresses this critical gap by powering Red Hat AI's collection of *490+ pre-compressed models*, enabling *2-5X faster inference* while preserving accuracy.
@@ -8,6 +9,7 @@ Rather than forcing organizations to navigate complex compression technologies, 
 
 *Bottom Line:* Deploy fast, cost-efficient AI using pre-optimized models without compression complexity.
 
+[#customer-qualification]
 == Customer Qualification
 
 The key to successful LLM compression engagements lies in identifying customers who face specific infrastructure or performance constraints. Experience shows that certain customer statements immediately indicate strong qualification potential, while others suggest the need for more careful evaluation.
@@ -51,6 +53,7 @@ Effective qualification requires understanding four critical dimensions of custo
 * "What would maintaining regulatory approval while reducing infrastructure costs be worth?"
 * "How do you currently handle functional equivalence validation for model modifications?"
 
+[#what-is-llm-compressor]
 == What is LLM Compressor?
 
 LLM Compressor represents a strategic shift from complex, research-grade optimization tools to enterprise-ready AI deployment solutions. Rather than expecting organizations to become compression experts, Red Hat AI has industrialized the process through pre-optimized model collections and integrated tooling.
@@ -61,6 +64,7 @@ LLM Compressor represents a strategic shift from complex, research-grade optimiz
 
 *Key Integration:* Native compatibility with HuggingFace models and direct deployment to vLLM for production serving.
 
+[#business-value]
 == Business Value
 
 The value proposition for LLM compression extends far beyond technical optimization to address fundamental business constraints that limit AI adoption and scale.
@@ -82,6 +86,7 @@ Red Hat AI's approach to model compression creates several distinct advantages i
 * *Enterprise support with SLAs* vs. community-only tools
 * *Immediate deployment* vs. 3-6 month implementation cycles
 
+[#model-selection]
 == Model Selection Made Simple
 
 The complexity of quantization schemes and technical parameters often obscures the straightforward business logic behind model selection. Red Hat AI has mapped common use cases to appropriate model types, eliminating the need for customers to understand technical compression details.
@@ -118,6 +123,7 @@ When models must operate in resource-constrained environments with limited compu
 * *Best for:* Resource-constrained environments
 * *Trade-off:* Potential accuracy degradation
 
+[#accuracy-conversations]
 == Managing Accuracy Conversations
 
 Accuracy concerns represent the most common objection to compressed model adoption. Success requires addressing these concerns proactively while maintaining realistic expectations about the evaluation requirements.
@@ -149,6 +155,7 @@ Setting realistic expectations based on quantization scheme selection helps cust
 * *W8A8:* Variable results requiring evaluation (2-5% potential impact)
 * *W4A16:* Requires thorough evaluation (5-10% potential impact)
 
+[#deployment-framework]
 == Deployment Decision Framework
 
 Successful compressed model deployments require careful assessment of customer circumstances to identify ideal opportunities while avoiding problematic engagements.
@@ -180,6 +187,7 @@ Organizations in regulated environments represent high-value opportunities when 
 * *Red Hat AI Value:* Evaluation frameworks, GuideLLM support, and documentation assistance
 * *Positioning:* "We help you deploy your approved models cost-effectively with rigorous validation"
 
+[#positioning]
 == "Why Red Hat AI?" Positioning
 
 Understanding competitive differentiation enables effective positioning against alternative approaches customers might consider.
@@ -208,6 +216,7 @@ Software-based optimization provides immediate value while hardware solutions re
 * *Flexible quantization options* vs. fixed hardware constraints
 * *Cost-effective optimization* vs. expensive hardware upgrades
 
+[#team-guidance]
 == Team Guidance
 
 Different roles within the organization require distinct approaches to effectively support compressed model deployments.
@@ -239,6 +248,7 @@ Support teams need clear escalation paths and troubleshooting guidance for ongoi
 * Escalate accuracy concerns to technical specialists
 * Monitor performance and optimization opportunities
 
+[#implementation]
 == Implementation Process
 
 Successful compressed model deployments follow a structured approach that balances speed to value with proper validation requirements.
@@ -279,6 +289,7 @@ Ensure performance meets customer requirements through systematic evaluation:
 * Monitor performance metrics (latency, throughput)
 * Adjust model selection if requirements not met
 
+[#success-metrics]
 == Success Metrics
 
 Measuring the impact of compressed model deployments requires tracking both technical performance improvements and business outcomes.
@@ -301,6 +312,7 @@ Broader organizational benefits that justify compressed model adoption:
 * Enhanced scalability without hardware expansion
 * Lower total cost of ownership
 
+[#common-objections]
 == Common Objections
 
 Anticipating and preparing responses to frequent customer concerns enables confident objection handling throughout the sales process.
@@ -335,6 +347,7 @@ Position compressed models as enabling rather than hindering regulatory complian
 
 *Response:* _"Many of our regulated customers use compressed models successfully. We provide comprehensive evaluation frameworks to demonstrate functional equivalence with your approved models, often enabling cost-effective deployment of models that were previously too expensive to scale."_
 
+[#getting-started]
 == Getting Started
 
 Moving from initial customer interest to active deployment requires clear next steps and resource identification.
@@ -358,6 +371,7 @@ Essential tools and support mechanisms for successful customer engagements:
 * *GuideLLM Benchmarking:* Available through Red Hat AI services
 * *Enterprise Support:* Contact Red Hat AI team
 
+[#key-takeaways]
 == Key Takeaways
 
 The following principles should guide all customer conversations and deployment decisions around LLM compression:
