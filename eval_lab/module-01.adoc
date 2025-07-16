@@ -52,7 +52,7 @@ guidellm benchmark \
   --data "prompt_tokens=256,output_tokens=128"
 ----
 
-You may consider, for different use cases, you will set different standardized dataset profiles that can be passed in as arguments in GuideLLM. For example the following variables represent input and output tokens, respectively, based on the given use case: 
+For different use cases, you can set different standardized dataset profiles that can be passed in as arguments in GuideLLM. For example, the following variables represent input and output tokens, respectively, based on the given use case: 
 
 * **Chat (512/256)**
 * **RAG (4096/512)**
