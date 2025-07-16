@@ -21,11 +21,8 @@ llm-d builds on proven open-source technologies while adding advanced distribute
 === Infrastructure
 llm-d requires a robust Kubernetes environment with specialized GPU and networking capabilities. The distributed nature of the system demands high-performance interconnects and sufficient GPU memory for model sharding:
 
-* Kubernetes cluster with GPU nodes
-<== there's no minimum reqs, though it functions best at scale with 10k-20k prompts
-also there's no public benchmark yet
-* Multi-GPU setup (minimum 2x GPUs with 48GB+ VRAM)
-* NVIDIA GPUs 
+* Kubernetes cluster with NVIDIA GPUs nodes
+* Scale-optimized deployment (designed for 10k-20k daily prompts, no published benchmarks available) 
 * High-speed networking (InfiniBand/RDMA preferred)
 * Persistent storage for model weights
 
