@@ -90,26 +90,26 @@ In addition to the improvements described above, it also offers the following ad
 * **Enabling new use cases**: By reducing the size and resource requirements, model optimization makes it feasible to use advanced LLMs in scenarios previously not possible, such as mobile, IoT, or embedded systems.
 
 
-= 2. Quantization with vLLM 
+= 2. Quantization in practice 
 
-== Types of quantizations that vllm & llm-compressor offer:
+== Quantization types in vLLM & LLM Compressor:
 
 [cols="1,2,3,4", options="header"]
 |===
 | Type of Quantization | What it does | Example impact | Quantization schemes supported
 
 | Weight quantization
-| Reduces the precision of model weights, lowering storage and memory requirements; llm-compressor for weights quantization; Requires calibration dataset for weight quantization
+| Reduces the precision of model weights, lowering storage and memory requirements; LLM Compressor for weights quantization; Requires calibration dataset for weight quantization
 | 100B model: BFloat16 → 200GB, FP8 → 100GB
 | W8A16, W4A16, WNA16
 
 | Weight and activation quantization 
-| Reduces model size and improves inference performance; llm-compressor for weights quantization and vllm for activation quantization during inference; Requires calibration dataset for weight quantization
+| Reduces model size and improves inference performance; LLM Compressor for weights quantization and vllm for activation quantization during inference; Requires calibration dataset for weight quantization
 | Smaller activation memory footprint, faster inference
 | W8A8, W4A8, W4A4
 
 | KV Cache quantization 
-| Reduced KV cache footprint & faster attention and crucial for **large context workloads**; Requires calibration dataset; llm-compressor for scales calibration and vLLM to use the scales
+| Reduced KV cache footprint & faster attention and crucial for **large context workloads**; Requires calibration dataset; LLM Compressor for scales calibration and vLLM to use the scales
 | Enables longer context or larger batch sizes with same hardware
 | FP8
 
@@ -141,6 +141,8 @@ In addition to the improvements described above, it also offers the following ad
 | Speed-focused inference on modern hardware; 
 | Recommended for compute capability >=9.0 (Hopper and Blackwell).
 |===
+Source: link:https://docs.google.com/document/d/1W4-oUkftWhDcyDl78UZpaGKEbsVKj-KCLqwPqTrHfQc/edit?tab=t.9mplyhrbolhw#heading=h.ju5za4svfth1[vLLM technical guide].
+For a full list of supported hardware vs quantization scheme mapping, refer to the link:https://docs.vllm.ai/en/latest/features/quantization/supported_hardware.html#supported-hardware[vLLM documentation].
 
 == Supported quantization methods/recipies and when to use what?
 
@@ -166,37 +168,83 @@ In addition to the improvements described above, it also offers the following ad
 
 |===
 
-_Other ecosystem quantization methods_
+== Let's help a client select the quantization method and scheme
 
-While the following are not recommended, it is important to understand at a general level what other quantization methods are out there besides the supported list.
+[cols="1,1,2", options="header"]
+|===
+| Question
+| Example client answer
+| How the client's answer drives the decision
 
-* AutoAWQ 
-  - https://github.com/casper-hansen/AutoAWQ
+| **1. Inference style**  
+Is the workload **online** (latency‑critical, interactive) or **offline** (throughput‑critical, batch)?
+| *e.g. “online customer‑service chatbot”*
+| • **Online** ⇒ Memory‑bandwidth bound ⇒ **Weight‑only quantization** (activations stay FP16).  
+• **Offline** ⇒ Compute bound ⇒ **Weight + activation quantization** (both operands low‑precision).
 
-* BitsAndBytes 
-  - https://github.com/ggml-org/llama.cpp/discussions/2948
+| **2. Target GPU architecture**
+| *e.g. “Ampere A100”*
+| • **Turing/Ampere** have INT8 Tensor Cores ⇒ pick INT8 for speeds.  
+• **Hopper/H100** have native FP8 ⇒ pick FP8 (or INT8 if tooling is simpler).
 
-* GGUF
-  - https://github.com/ggml-org/llama.cpp/discussions/2948  
-  vLLM only supports single-file GGUF models
+| **3. Expected concurrency / batch size**  
+Enough requests to saturate matrix‑mult units?
+| *e.g. “≈5 concurrent users; GPU often idle”*
+| • If GPU **not fully busy**, you gain more by cutting **memory traffic** (weight‑only).  
+• If GPU **fully busy**, you gain more by lowering **compute cost** (weight + activation).
 
-== Quantization process
+| **4. Accuracy head‑room / SLA**  
+“How much accuracy can I lose?”
+| *e.g. “<0.5 pp drop allowed”*
+| Tight budgets push you toward higher‑accuracy methods (GPTQ, SmoothQuant + GPTQ).
+|===
+
+== Example decision cheat sheet
+[cols="1,1,1,2", options="header"]
+|===
+| Chosen answers
+| Quantization scheme
+| Recommended method(s)
+| Why this combination?
+
+| *Online*, Ampere/Turing, few users, strict latency
+| W4 / W8 – A16 (weight-only)
+| AWQ (fast), or GPTQ (max accuracy)
+| Data-movement is the bottleneck; compute is "free". Weight-only avoids per-token FP16→INT8 converts on activations.
+
+| *Online*, Hopper, few users
+| W4 / W8 – A16 weight-only (still)
+| AWQ or GPTQ
+| Hopper can run FP8 activations, but if users are few, activation traffic is tiny—stick to weight-only.
+
+| *Offline*, Ampere/Turing, large batch
+| W8 – A8 (INT8/INT8)
+| SmoothQuant + GPTQ (fold activation outliers, then weight-quant)
+| Matrix-multiplication dominates; lowering both operands to INT8 doubles Tensor-Core throughput.
+
+| *Offline*, Hopper, massive batch
+| W8 – A8 or FP8/FP8
+| SmoothQuant + SparseGPT (optional pruning)
+| Hopper’s FP8 Tensor Cores peak at ~2× A100 throughput. SmoothQuant tames activation outliers; SparseGPT can prune 2:4 (semi-structured) for more speed.
+|===
+
+
+== Quantization workflow
 image::quantization_flow.png[quantization_flow]
 
-
-* Select and load the model
+* Model selection and loading
 [source,python]
 ----
 model = AutoModelForCausalLM.from_pretrained("your-model")
 tokenizer = AutoTokenizer.from_pretrained("your-model")
 ----
 
-* Choose the quantization scheme (<<_supported_quantization_schemes_when_to_use_what,Supported quantization schemes>>)
-* Choose the quantization method (<<_supported_quantization_methods_recipies_and_when_to_use_what,Supported quantization methods>>)
-* Prepare calibration data
+* Choosing the quantization scheme (<<_supported_quantization_schemes_when_to_use_what,Supported quantization schemes>>)
+* Choosing the quantization method (<<_supported_quantization_methods_recipies_and_when_to_use_what,Supported quantization methods>>)
+* Preparing calibration data
 
 ** Ensure the calibration data contains a high variety of samples to prevent overfitting towards a specific use case.
-** If the model was fine-tuned, use the sample datasets from the fine tuning training data for calibration.
+** If the model was fine-tuned, use the sample datasets from the fine-tuning training data for calibration.
 ** Employ the chat template or instruction template that the model was trained with.
 ** Start with 512 samples for calibration data, and increase if accuracy drops.
 ** Use a sequence length of 2048 as a starting point.
@@ -204,7 +252,7 @@ tokenizer = AutoTokenizer.from_pretrained("your-model")
 *** `dampening_frac` sets how much influence the GPTQ algorithm has. Lower values can improve accuracy, but can lead to numerical instabilities that cause the algorithm to fail.
 *** `actorder` sets the activation ordering. When compressing the weights of a layer, the order in which channels are quantized matters. Setting `actorder="weight"` can improve accuracy without added latency.
 
-* Apply quantization
+* Applying quantization
 **  Use oneshot API and provide the recipies to quantize and/or apply sparsity to the model given a dataset
 [source,python]
 ----
@@ -246,7 +294,7 @@ oneshot(
     num_calibration_samples=NUM_CALIBRATION_SAMPLES,
 )
 ----
-* Save the model 
+* Saving the model 
 [source,python]
 ----
 SAVE_DIR = MODEL_ID.split("/")[1] + "-FP8-KV"
@@ -254,7 +302,7 @@ model.save_pretrained(SAVE_DIR, save_compressed=True)
 tokenizer.save_pretrained(SAVE_DIR)
 ----
 
-* Evaluate accuracy of the quantized model
+* Evaluating accuracy of the quantized model
 [source,python]
 ----
 lm_eval \
