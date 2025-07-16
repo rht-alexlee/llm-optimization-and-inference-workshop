@@ -74,12 +74,51 @@ Clone the repository with RH Inference server for RHEL
 git clone https://github.com/redhat-ai-services/etx-llm-optimization-and-inference-leveraging.git
 ----
 
-Create vllm pod
+Run the vllm pod
 
 
 [source,sh,role=execute]
 ----
 sudo podman kube play etx-llm-optimization-and-inference-leveraging/optimization_lab/rhel/vllm-pod.yaml
+----
+
+Open a new terminal to follow the logs.
+
+[source,sh,role=execute]
+----
+sudo podman logs --follow vllm-vllm 
+----
+
+[source,sh,role=execute]
+----
+curl -X POST -H "Content-Type: application/json" -d '{
+    "prompt": "What is the capital of France?",
+    "max_tokens": 100
+}' http://127.0.0.1:80/v1/completions | jq
+----
+
+Go to your other terminal and view the logs. You should see a successful log entry. 
+
+image::successful-request-to-vllm.png[successful-request-to-vllm.png]
+
+== Run a quick benchmark test
+We'll run a quick benchmark test to show how the RH Inference server performs.
+
+[source,sh,role=execute]
+----
+pip install guidellm
+----
+
+Run a default benchmark
+
+[source,sh,role=execute]
+----
+guidellm benchmark \
+  --target "http://127.0.0.1:80/v1" \
+  --model "granite-3.0-2b-instruct" \
+  --rate-type sweep \
+  --max-seconds 30 \
+  --data "prompt_tokens=256,output_tokens=128"
 ----
 
 Remove and cleanup vllm pod

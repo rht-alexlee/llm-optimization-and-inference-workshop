@@ -7,6 +7,9 @@ The exponential growth of Large Language Models has created a fundamental challe
 
 Rather than forcing organizations to navigate complex compression technologies, Red Hat AI provides ready-made compressed models that can be deployed immediately for AI inference without technical complexity.
 
+Consider build your own
+RedHat Valideted Model Repository
+
 *Bottom Line:* Deploy fast, cost-efficient AI using pre-optimized models without compression complexity.
 
 [#customer-qualification]

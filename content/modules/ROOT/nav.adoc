@@ -26,3 +26,12 @@
 ** xref:llm-compressor-guide.adoc#team-guidance[Team Guidance]
 ** xref:llm-compressor-guide.adoc#implementation[Implementation]
 ** xref:llm-compressor-guide.adoc#common-objections[Common Objections]
+
+* xref:llm-d-guide.adoc[llm-d Technical Overview]
+** xref:llm-d-guide.adoc#what-it-does[What It Does]
+** xref:llm-d-guide.adoc#architecture[Architecture]
+** xref:llm-d-guide.adoc#technical-requirements[Technical Requirements]
+*** xref:llm-d-guide.adoc#infrastructure[Infrastructure]
+*** xref:llm-d-guide.adoc#prerequisites[Prerequisites]
+*** xref:llm-d-guide.adoc#deployment[Deployment]
+** xref:llm-d-guide.adoc#key-features[Key Features]
