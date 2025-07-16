@@ -71,7 +71,7 @@ Clone the repository with RH Inference server for RHEL
 
 [source,sh,role=execute]
 ----
-git clone https://github.com/redhat-ai-services/inference-service-on-multiple-platforms.git
+git clone https://github.com/redhat-ai-services/etx-llm-optimization-and-inference-leveraging.git
 ----
 
 Create vllm pod
@@ -79,7 +79,7 @@ Create vllm pod
 
 [source,sh,role=execute]
 ----
-sudo podman kube play inference-service-on-multiple-platforms/rhel/vllm-pod.yaml
+sudo podman kube play etx-llm-optimization-and-inference-leveraging/optimization_lab/rhel/vllm-pod.yaml
 ----
 
 Remove and cleanup vllm pod

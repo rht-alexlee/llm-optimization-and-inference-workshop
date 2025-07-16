@@ -17,7 +17,7 @@ spec:
     args:
       - --port=8080
       - --model=/mnt/models
-      - '--served-model-name=granite-8b-instruct'
+      - '--served-model-name=granite-3b-instruct'
       - --max-model-len=10000
     resources:
       limits:
