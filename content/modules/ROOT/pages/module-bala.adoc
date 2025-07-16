@@ -111,7 +111,7 @@ In addition to the improvements described above, it also offers the following ad
 | KV Cache quantization 
 | Reduced KV cache footprint & faster attention and crucial for **large context workloads**; Requires calibration dataset; llm-compressor for scales calibration and vLLM to use the scales
 | Enables longer context or larger batch sizes with same hardware
-| NA
+| FP8
 
 |===
 
