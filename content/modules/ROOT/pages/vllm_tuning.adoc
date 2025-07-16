@@ -80,7 +80,7 @@ Llama 3-8B is a very popular, powerful small-size _dense_ model.
 
 Here are the primary avenues for optimization:
 
-1. Model Quantization
+## Model Quantization
 
 Quantization is arguably the most impactful change you can make for latency, especially with vLLM's efficient kernel implementation for w8a16 or w4a16.
 
@@ -124,11 +124,14 @@ This is what we get, focusing on TTFT:
 Up to 2x speedup!
 
 
-2. Using a smaller model. Following the same principle as quantization, serving a smaller model (when accuracy is acceptable) will enable faster response
+## Using a smaller model 
+
+Following the same principle as quantization, serving a smaller model (when accuracy on task is acceptable) will enable faster response
 times as less data is moved around (model weights) and less sequential computations are involved (generally fewer layers).
 For this particular use-case, consider `Llama-3.2-3B` or even `Llama-3.2-1B`.
 
-2.5. Using a different model.
+### Using a different model.
+
 While Llama 3 is a strong dense model, for certain latency-sensitive scenarios, considering a Mixture-of-Experts (MoE) model like Mixtral 8x7B could be a 
 compelling alternative.
 
@@ -145,7 +148,7 @@ vLLM Support: vLLM has strong support for MoE models like Mixtral, including opt
 
 Consider When: Your application might benefit from the increased quality often associated with larger (total parameter) MoE models, combined with the per-token speed advantages of their sparse computation. Benchmarking Mixtral 8x7B (or similar MoE) against your optimized Llama 3 8B on your specific workload is crucial
 
-3. Speculative Decoding.
+## Speculative Decoding.
 Speculative decoding is a powerful technique to reduce the per-token generation latency, particularly noticeable for the Time To First Token (TTFT).
 Speculative decoding is fundamentally a tradeoff: spend a little bit of extra compute to reduce memory movement.
 The extra compute is allocated towards the smaller draft model and consequent proposer verifying step.
@@ -173,7 +176,7 @@ python -m vllm.entrypoints.api_server \
 vLLM will spin up an instance with the two models. 
 Mind that the GPU memory will now be comprised of: the original `Llama-3.2-8B-Instruct` weights + `EAGLE3-LLaMA3.2-Instruct-8B` proposer weights + a KV cache for *both* models.
 
-3. GPU Allocation & Batching Parameters: Managing Concurrency
+## GPU Allocation & Batching Parameters: Managing Concurrency
 For a "given amount of concurrent users," how you manage batching is critical to maximize GPU utilization without introducing excessive queueing latency.
 
 Goal: For latency, you want enough KV cache to prevent evictions, which cause re-computation and latency spikes.
@@ -193,7 +196,7 @@ Increase them until you hit memory limits or observe diminishing returns. vLLM's
 3.5. Advanced Considerations
 FlashAttention / PagedAttention: Llama 3 8B benefits heavily from optimized attention mechanisms. vLLM uses PagedAttention which incorporates FlashAttention (or equivalent optimized kernels) under the hood. Ensure your vLLM installation is leveraging these. This is usually automatic but worth confirming if you encounter unexpected performance.
 
-4. Data Parallelism: Scaling for Concurrent Users
+## Data Parallelism: Scaling for Concurrent Users
 While Tensor Parallelism (discussed below) aims to reduce the latency of a single, very large model by sharding its layers across multiple GPUs, Data Parallelism serves a different, but equally important, purpose: scaling the number of concurrent requests you can serve efficiently.
 
 How it Works: In a data parallel setup, the entire model (Llama 3 8B in our case) is replicated on multiple GPUs or even across multiple nodes. Each GPU (or set of GPUs using tensor parallelism) then independently processes a different batch of incoming requests. The requests are distributed among these model replicas.
