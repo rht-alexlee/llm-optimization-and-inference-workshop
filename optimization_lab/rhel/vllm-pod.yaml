@@ -17,7 +17,7 @@ spec:
     args:
       - --port=8080
       - --model=/mnt/models
-      - '--served-model-name=granite-3b-instruct'
+      - '--served-model-name=granite-2b-instruct'
       - --max-model-len=10000
     resources:
       limits:
@@ -31,7 +31,7 @@ spec:
       - name: modelcar-model
         mountPath: /mnt/models
   - name: modelcar
-    image: 'quay.io/redhat-ai-services/modelcar-catalog:granite-3.3-3b-instruct'
+    image: 'quay.io/redhat-ai-services/modelcar-catalog:granite-3.3-2b-instruct'
     args:
       - sh
       - '-c'
