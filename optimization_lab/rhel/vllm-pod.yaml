@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: vllm
+  name: vllm
+spec:
+  containers:
+  - name: vllm
+    image: registry.redhat.io/rhaiis/vllm-cuda-rhel9:3.1
+    # rhaiis image is missing the chat-templates
+    # https://issues.redhat.com/browse/AIPCC-1523
+    command:
+      - python
+      - '-m'
+      - vllm.entrypoints.openai.api_server
+    args:
+      - --port=8080
+      - --model=/mnt/models
+      - '--served-model-name=granite-3b-instruct'
+      - --max-model-len=10000
+    resources:
+      limits:
+        nvidia.com/gpu=all: 1
+    ports:
+      - containerPort: 8080
+        hostPort: 80
+    securityContext:
+      runAsNonRoot: true
+    volumeMounts:
+      - name: modelcar-model
+        mountPath: /mnt/models
+  - name: modelcar
+    image: 'quay.io/redhat-ai-services/modelcar-catalog:granite-3.3-3b-instruct'
+    args:
+      - sh
+      - '-c'
+      - sleep infinity
+    volumeMounts:
+      - name: modelcar-model
+        mountPath: /models
+  volumes:
+  - name: modelcar-model
+    emptyDir: {}

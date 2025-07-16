@@ -61,15 +61,27 @@ image::gpu-passthrough-test.png[gpu-passthrough-test.png]
 == Logging Into Red Hat Container Registry
 Login to registry.redhat.io
 
-```
+[source,sh,role=execute]
+----
 sudo podman login registry.redhat.io
-```
+----
 
-#### PICKUP HERE
-Running vLLM
+== Running vLLM on RHEL
+Clone the repository with RH Inference server for RHEL 
+
+[source,sh,role=execute]
+----
+git clone https://github.com/redhat-ai-services/etx-llm-optimization-and-inference-leveraging.git
+----
+
 Create vllm pod
 
-sudo podman kube play vllm-pod.yaml
+
+[source,sh,role=execute]
+----
+sudo podman kube play etx-llm-optimization-and-inference-leveraging/optimization_lab/rhel/vllm-pod.yaml
+----
+
 Remove and cleanup vllm pod
 
 sudo podman pod stop vllm && sudo podman pod rm vllm
