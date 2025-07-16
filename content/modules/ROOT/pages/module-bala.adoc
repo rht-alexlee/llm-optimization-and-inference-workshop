@@ -4,7 +4,7 @@
  - https://newsletter.maartengrootendorst.com/p/a-visual-guide-to-quantization
 
 
-= The deep dive content for LLM quantization can be found here - https://docs.google.com/presentation/d/1_CKoP4EcjKNv7ykYplQNIjvyru9xp2Hn/edit?slide=id.g363272ea3ef_0_162#slide=id.g363272ea3ef_0_162
+== The deep dive content for this section can be found here - link:https://docs.google.com/presentation/d/1_CKoP4EcjKNv7ykYplQNIjvyru9xp2Hn/edit?slide=id.g363272ea3ef_0_162#slide=id.g363272ea3ef_0_162[LLM quantization]
 
 
 = 1. Model optimization
