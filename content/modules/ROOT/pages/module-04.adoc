@@ -14,47 +14,59 @@ https://docs.google.com/document/d/11-Oiomiih78dBjIfClISSQBKqb0Ij4UJg31g0dO5XIc/
 === RHEL
 This section will walk you through deploying RH Inference server on RHEL.
 
+== Login to bastion
+First, we'll login to the bastion server that we'll be installing Red Hat Inference server to. Open a terminal and execute the below command.
+
+[source,sh,role=execute]
+----
+ssh ec2-user@<YOUR_BASTION_ADDRESS>
+----
+
 == Host Verification
 
 Before proceeding, it is critical to verify that the host environment is correctly configured.
 Check Driver Status: After the system reboots, run the nvidia-smi (NVIDIA System Management Interface) command. A successful configuration will display a table listing all detected NVIDIA GPUs, their driver versions, and CUDA versions.14
 
-```
+[source,sh,role=execute]
+----
 nvidia-smi
-```
+----
 
 image::nvidia-smi-screenshot.png[nvidia-smi-screenshot.png]
 
 == Install nvidia-container-toolkit
 The NVIDIA Container Toolkit is the crucial bridge that allows container runtimes like Podman or Docker to securely access the host's GPUs.
 
-```
+[source,sh,role=execute]
+----
 curl -s -L https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo | \
   sudo tee /etc/yum.repos.d/nvidia-container-toolkit.repo
 sudo dnf-config-manager --enable nvidia-container-toolkit-experimental
 sudo dnf install -y nvidia-container-toolkit
-```
+----
 
 == Configure CDI
 
-```
+[source,sh,role=execute]
+----
 sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
 # check the config
 nvidia-ctk cdi list
-```
+----
 
 image::cdi-list.png[cdi-list.png]
 
 Test Container-GPU Access: To confirm that Podman can access the GPUs, run a simple test workload using a standard NVIDIA CUDA sample image. This step definitively validates the entire stack, from the driver to the container runtime.
 
-```
+[source,sh,role=execute]
+----
 sudo podman run --rm --device nvidia.com/gpu=all nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda11.7.1-ubi8
 podman run --rm -it \
 --security-opt=label=disable \
 --device nvidia.com/gpu=all \
 nvcr.io/nvidia/cuda:12.4.1-base-ubi9 \
 nvidia-smi
-```
+----
 
 image::gpu-passthrough-test.png[gpu-passthrough-test.png]
 
