@@ -4,6 +4,9 @@
  - https://newsletter.maartengrootendorst.com/p/a-visual-guide-to-quantization
 
 
+= The deep dive content for LLM quantization can be found here - https://docs.google.com/presentation/d/1_CKoP4EcjKNv7ykYplQNIjvyru9xp2Hn/edit?slide=id.g363272ea3ef_0_162#slide=id.g363272ea3ef_0_162
+
+
 = 1. Model optimization
 
 == Challenges with running larger models
@@ -310,3 +313,4 @@ lm_eval \
   --model_args pretrained=$MODEL,kv_cache_dtype=fp8,add_bos_token=True \
   --tasks gsm8k --num_fewshot 5 --batch_size auto
 ----
+
