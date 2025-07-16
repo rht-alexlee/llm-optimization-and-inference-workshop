@@ -18,7 +18,8 @@ While we're optimizing for latency, higher throughput often means better resourc
 We can use this script as our starting point and the way we're going to benchmark our model as we step through the optimizations:
 
 ```bash
-#!/bin/sh
+#!/bin/bash
+
 MODEL=ibm-granite/granite-3.3-8b-instruct
 LOG_PREFIX=
 
@@ -51,10 +52,10 @@ done
 
 echo "vLLM is up and healthy!"
 
-# Benchmark model at different request rates
-for request_rate in 1 4 16 32; do
+for request_rate in 1 4 8 16; do
     BM_LOG="bm_${LOG_PREFIX}_${request_rate}.log"
-    python benchmarks/benchmark_serving.py \
+    # or python benchmarks/benchmark_serving.py \
+    vllm bench serve \
         --backend vllm \
         --model $MODEL \
         --dataset-name random \
@@ -68,8 +69,8 @@ done
 ```
 To benchmark the model here, we're going to simulate an artificial "dataset" using "vllm bench" utility command.
 
-Which on a single L4 at vllm (`d0dc4cfca`) yields:
-```bash
+Here's the starting results on single NVIDIA L4 GPU at vllm (`d0dc4cfca`):
+```
 
 ```
 
@@ -115,6 +116,13 @@ Let us try to run a w8a8 int8 model, by referring to the original script:
 MODEL=RedHatAI/granite-3.1-8b-instruct-quantized.w8a8
 LOG_PREFIX=int8
 ```
+
+This is what we get, focusing on TTFT:
+```
+```
+
+Up to 2x speedup!
+
 
 2. Using a smaller model. Following the same principle as quantization, serving a smaller model (when accuracy is acceptable) will enable faster response
 times as less data is moved around (model weights) and less sequential computations are involved (generally fewer layers).
