@@ -1,0 +1,219 @@
+# Case Study: Latency Optimization for Llama-3.2-8B-Instruct with vLLM
+
+Let's apply our knowledge to a concrete scenario: you need to serve Llama 3-8B, and your primary goal is to minimize inference latency 
+for a given number of concurrent users (eg 32 in this case) with an expected generation length <2048 tokens. 
+As you have limited flexibility to scale GPU resources, you want to understand the key vLLM parameters and strategies to maximize performance 
+before simply adding more hardware.
+
+
+# Introduction
+
+Before diving into tuning, it's important to reiterate the interplay:
+Latency: The time it takes for a single request to complete.
+Of particular importance here is going to be tracking the Time To First Token - TTFT, which will ensure the user can experience snappier responses.
+
+Throughput: The number of requests (or tokens) processed per unit of time. 
+While we're optimizing for latency, higher throughput often means better resource utilization, which can indirectly help avoid latency spikes due to queuing.
+
+We can use this script as our starting point and the way we're going to benchmark our model as we step through the optimizations:
+
+```bash
+#!/bin/sh
+MODEL=ibm-granite/granite-3.3-8b-instruct
+LOG_PREFIX=
+
+PORT=8000
+HEALTH_ENDPOINT="http://localhost:$PORT/health"
+DEVICES="0"
+
+VLLM_CMD="CUDA_VISIBLE_DEVICES=$DEVICES vllm serve $MODEL --disable-log-requests --port $PORT --max-num-seqs 32 --max-model-len 2048 &"
+
+# Function to clean up if script is interrupted
+cleanup() {
+    echo "Stopping vLLM (PID=$VLLM_PID)..."
+    kill "$VLLM_PID" 2>/dev/null || true
+    wait "$VLLM_PID" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+eval $VLLM_CMD
+VLLM_PID=$!
+
+# Wait for /health endpoint to be ready
+echo "Waiting for vLLM to become healthy..."
+until curl -sf "$HEALTH_ENDPOINT"; do
+    if ! ps -p $VLLM_PID > /dev/null; then
+        echo "vLLM process exited unexpectedly."
+        exit 1
+    fi
+    sleep 2
+done
+
+echo "vLLM is up and healthy!"
+
+# Benchmark model at different request rates
+for request_rate in 1 4 16 32; do
+    BM_LOG="bm_${LOG_PREFIX}_${request_rate}.log"
+    python benchmarks/benchmark_serving.py \
+        --backend vllm \
+        --model $MODEL \
+        --dataset-name random \
+        --random-input-len 800 \
+        --random-output-len 128 \
+        --request-rate $request_rate \
+        --ignore-eos \
+        --num-prompts 100 \
+        --port $PORT | tee "$BM_LOG"   
+done
+```
+To benchmark the model here, we're going to simulate an artificial "dataset" using "vllm bench" utility command.
+
+Which on a single L4 at vllm (`d0dc4cfca`) yields:
+```bash
+
+```
+
+# vLLM Tuning Strategies for Llama 3 8B Latency
+
+Llama 3-8B is a very popular, powerful small-size _dense_ model. 
+
+Here are the primary avenues for optimization:
+
+1. Model Quantization
+
+Quantization is arguably the most impactful change you can make for latency, especially with vLLM's efficient kernel implementation for w8a16 or w4a16.
+
+Why? Reducing precision directly shrinks the model's memory footprint and enables faster arithmetic on modern GPUs.
+
+What to try (_highly_ dependent on available hardware):
+
+FP8: If you have access to NVIDIA H100 GPUs or newer (e.g., B200), FP8 (E4M3 or E5M2) is a game-changer. These GPUs have dedicated FP8 Tensor Cores that 
+offer significantly higher throughput compared to FP16. This provides a direct path to lower latency per token without significant accuracy loss 
+for Llama 3 models.
+
+INT8 (e.g., AWQ): Starting with A100 or even A6000/3090 GPUs, INT8 quantization is an excellent choice. It reduces the model to 8B * 1 byte = 8GB, 
+halving the memory footprint and enabling faster integer operations. 
+
+INT4: If you're pushing for absolute minimum latency and can tolerate a small accuracy trade-off, INT4 (e.g., via AWQ or other 4-bit methods) 
+can reduce the model to 8B * 0.5 bytes = 4 GB. This is extremely memory-efficient and, on some hardware, can offer further speedups. 
+Test accuracy thoroughly with your specific use case, as 4-bit can sometimes be more sensitive.
+Similarly, check out FP4 versions when Nvidia Blackwell hardware is available.
+
+
+| Quantization Type | Recommended Hardware             | Key Benefits for Latency                                                                                                  | Memory Footprint (for Llama 3 8B) | Accuracy Consideration                                            | Notes                                                                                                                                                                                                                                                          |
+| :---------------- | :------------------------------- | :-------------------------------------------------------------------------------------- | :-------------------------------- | :---------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **FP8 (E4M3/E5M2)** | NVIDIA H100, B200 (or newer)     | - Dedicated FP8 Tensor Cores for significantly higher throughput. Excellent balance of speed and accuracy. | 8B * 1 byte ~= 8 GB               | Minimal accuracy loss for Llama 3 models.                         | Already a standard for high-performance inference.                                                                                                                                                                                   |
+| **INT8 (e.g., AWQ)** | NVIDIA A100, A6000, RTX 3090 (or newer with Tensor Cores) | - Halves memory footprint.<br>- May experience accuracy drop.     | 8B * 1 byte ~= 8 GB               | Generally decent accuracy preservation. | Widely supported (across manifacturers) and fast.                                                                                                                                                                                                    |
+| **INT4 (e.g., AWQ)** | NVIDIA A100, A6000, RTX 3090 (or newer with Tensor Cores) | - Extremely memory-efficient.<br>- Only use when accuracy drop is accepted.           | 8B * 0.5 bytes ~= 4 GB            | Requires an accuracy trade-off. | Pushes for absolute minimum latency.                                                                                                                                                                                                                               |
+| **FP4** | NVIDIA Blackwell (B200)          | - New architecture support for even lower-precision floating-point.<br>- Potentially better accuracy than INT4 at similar memory footprints. | 8B * 0.5 bytes ~= 4 GB            | Designed to maintain better accuracy than integer 4-bit, but still requires validation. | Emerging standard with the latest hardware (e.g., NVIDIA Blackwell). Look for NVFP4 variants.
+
+
+Please refer to the compatiblity chart https://docs.vllm.ai/en/latest/features/quantization/supported_hardware.html for up to date quantization support in vLLM.
+
+Let us try to run a w8a8 int8 model, by referring to the original script:
+```
+MODEL=RedHatAI/granite-3.1-8b-instruct-quantized.w8a8
+LOG_PREFIX=int8
+```
+
+2. Using a smaller model. Following the same principle as quantization, serving a smaller model (when accuracy is acceptable) will enable faster response
+times as less data is moved around (model weights) and less sequential computations are involved (generally fewer layers).
+For this particular use-case, consider `Llama-3.2-3B` or even `Llama-3.2-1B`.
+
+2.5. Using a different model.
+While Llama 3 is a strong dense model, for certain latency-sensitive scenarios, considering a Mixture-of-Experts (MoE) model like Mixtral 8x7B could be a 
+compelling alternative.
+
+Why MoE for Latency? MoE models have a large total number of parameters (e.g., Mixtral 8x7B has 47B total parameters), but critically, 
+they only activate a sparse subset of these parameters (e.g., 13B for Mixtral 8x7B) for each token generated. 
+This means the actual computational cost per token is significantly lower than a dense model of its total parameter count.
+Which is especially true when sharding experts over multiple GPUs with MoE especially with vLLM's optimized handling of MoE sparsity. 
+
+Trade-offs: While MoE models can offer lower inference latency per token due to their sparse activation, they still require enough GPU memory 
+to load the entire model's parameters, not just the active ones. So, Mixtral 8x7B will demand more VRAM than Llama 3 8B,
+even if it's faster per token. You'll need sufficient GPU memory (e.g., a single A100 80GB or multiple smaller GPUs with tensor parallelism) to fit the full 47B parameters.
+
+vLLM Support: vLLM has strong support for MoE models like Mixtral, including optimizations for their unique sparse compute patterns and dynamic routing.
+
+Consider When: Your application might benefit from the increased quality often associated with larger (total parameter) MoE models, combined with the per-token speed advantages of their sparse computation. Benchmarking Mixtral 8x7B (or similar MoE) against your optimized Llama 3 8B on your specific workload is crucial
+
+3. Speculative Decoding.
+Speculative decoding is a powerful technique to reduce the per-token generation latency, particularly noticeable for the Time To First Token (TTFT).
+Speculative decoding is fundamentally a tradeoff: spend a little bit of extra compute to reduce memory movement.
+The extra compute is allocated towards the smaller draft model and consequent proposer verifying step.
+At low request rates, we are memory-bound, so reducing memory movement can really help with latency. 
+However, at higher throughputs or batch sizes, we are compute-bound, and speculative decoding can provide worse performance. 
+
+image::spec_decoding.png[spec_decoding]
+
+The graph here from https://developers.redhat.com/articles/2025/07/01/fly-eagle3-fly-faster-inference-vllm-speculative-decoding#speculative_decoding__a_solution_for_faster_llms
+highlighs the tradeoffs for when speculative decoding helps and when it can hurt performance as batch size increases.
+Take away message: as long as the number of requests is bound to use a non-intensive amount of GPU resources (lower req/s), spec decoding can provide
+a nice speedup.
+
+What to Try: You'll need to specify a smaller draft model. A good starting point for Llama might be a smaller Llama variant (e.g., Llama 3B) or as in this 
+example a speculator trained specifically for our use-case.
+
+vLLM Configuration:
+
+Bash
+
+python -m vllm.entrypoints.api_server \
+    --model meta-llama/Llama-3.2-8B-Instruct \
+    --speculative-config '{"model": "yuhuili/EAGLE3-LLaMA3.2-Instruct-8B", "num_speculative_tokens": 3, "method":"eagle3", "draft_tensor_parallel_size":1}'  
+
+vLLM will spin up an instance with the two models. 
+Mind that the GPU memory will now be comprised of: the original `Llama-3.2-8B-Instruct` weights + `EAGLE3-LLaMA3.2-Instruct-8B` proposer weights + a KV cache for *both* models.
+
+3. GPU Allocation & Batching Parameters: Managing Concurrency
+For a "given amount of concurrent users," how you manage batching is critical to maximize GPU utilization without introducing excessive queueing latency.
+
+Goal: For latency, you want enough KV cache to prevent evictions, which cause re-computation and latency spikes.
+--max-model-len: The maximum sequence length (prompt + generated tokens) the model can handle.
+Goal: Set this to the maximum reasonable length for your use case. Too small means requests get truncated; too large allocates more KV cache than necessary, potentially limiting concurrent requests.
+Tuning: If most of your requests are short, keeping max-model-len tighter can allow more requests into the batch.
+
+Tuning: Monitor your actual KV cache usage under your target concurrency. If you see high eviction rates, you might need more memory or a smaller batch size.
+
+--max-num-seqs: The maximum number of sequences (requests) that can be processed concurrently.
+
+
+Tuning: For latency, ensure these values are high enough to accommodate your concurrent users and their expected output lengths without causing requests to queue extensively. 
+Increase them until you hit memory limits or observe diminishing returns. vLLM's PagedAttention is designed to be efficient here.
+
+
+3.5. Advanced Considerations
+FlashAttention / PagedAttention: Llama 3 8B benefits heavily from optimized attention mechanisms. vLLM uses PagedAttention which incorporates FlashAttention (or equivalent optimized kernels) under the hood. Ensure your vLLM installation is leveraging these. This is usually automatic but worth confirming if you encounter unexpected performance.
+
+4. Data Parallelism: Scaling for Concurrent Users
+While Tensor Parallelism (discussed below) aims to reduce the latency of a single, very large model by sharding its layers across multiple GPUs, Data Parallelism serves a different, but equally important, purpose: scaling the number of concurrent requests you can serve efficiently.
+
+How it Works: In a data parallel setup, the entire model (Llama 3 8B in our case) is replicated on multiple GPUs or even across multiple nodes. Each GPU (or set of GPUs using tensor parallelism) then independently processes a different batch of incoming requests. The requests are distributed among these model replicas.
+
+Impact on Latency: Data parallelism does not reduce the per-token latency of a single request. The time it takes for one request to complete on a single GPU remains roughly the same. However, by having multiple model replicas, you can process many more requests simultaneously. This significantly increases the overall system throughput and dramatically reduces the queuing time for individual requests when your service experiences high concurrency.
+
+When to Use It:
+
+When your model (like Llama 3 8B in FP16/INT8) already fits comfortably on one or a few GPUs using tensor parallelism.
+
+When your primary bottleneck is serving a large number of concurrent users, leading to long queues and high average latency.
+
+When you have enough GPU resources to spare for model replication.
+
+
+
+Hardware Choice: While this guide focuses on tuning vLLM, the underlying hardware is fundamental. H100 (for FP8) or A100 (for INT8/FP16) are the recommended choices for low-latency LLM inference.
+
+Monitoring and Iteration
+Optimization is an iterative process. As you tune vLLM, continuously monitor key metrics:
+
+Time To First Token (TTFT): Critical for interactive applications.
+
+Time To Last Token (TLT) / Per-Token Latency: Overall response time.
+
+Throughput (Tokens/sec or Requests/sec): To ensure your concurrency goals are met.
+
+GPU Utilization: High utilization indicates efficient use of resources.
+
+KV Cache Eviction Rate: High rates indicate insufficient memory for KV cache.
+
