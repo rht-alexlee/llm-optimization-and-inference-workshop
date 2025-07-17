@@ -1,7 +1,7 @@
 # Case Study: Latency Optimization for granite-3.1-8b-instruct with vLLM
 
 Let's apply our knowledge to a concrete scenario: you need to serve granite-3.1-8b-instruct, and your primary goal is to minimize inference latency 
-for a given number of concurrent users (eg 32 in this case) with an expected generation length <2048 tokens. 
+for a given number of concurrent users -32 in this case- with an expected generation length <2048 tokens. 
 As you have limited flexibility to scale GPU resources, you want to understand the key vLLM parameters and strategies to maximize performance 
 before simply adding more hardware.
 
@@ -9,8 +9,10 @@ before simply adding more hardware.
 # Introduction
 
 Before diving into tuning, it's important to reiterate the interplay:
+
+
 Latency: The time it takes for a single request to complete.
-Of particular importance here is going to be tracking the Time To First Token - TTFT, which will ensure the user can experience snappier responses.
+Of particular importance here is going to be tracking the Time To First Token - *TTFT*, which will ensure the user can experience snappier responses.
 
 Throughput: The number of requests (or tokens) processed per unit of time. 
 While we're optimizing for latency, higher throughput often means better resource utilization, which can indirectly help avoid latency spikes due to queuing.
@@ -77,9 +79,11 @@ for request_rate in $REQUEST_RATES; do
 done
 
 ```
+The script will simply spin up a vLLM instance and benchmark for a particular amount of concurrent users.
 To benchmark the model here, we're going to simulate an artificial "dataset" using "vllm bench" utility command.
 
 Here's the starting results on single NVIDIA L4 GPU at vllm (`d0dc4cfca`), focusing on TTFT:
+
 image::starting_point.png[starting_point]
 
 All reported times are in `ms`. All reported times are in milliseconds. Notice how quickly we exceed the "seconds" threshold with even a 
@@ -234,7 +238,7 @@ The extra compute is allocated towards the smaller draft model and consequent pr
 At low request rates, we are memory-bound, so reducing memory movement can really help with latency. 
 However, at higher throughputs or batch sizes, we are compute-bound, and speculative decoding can provide worse performance. 
 
-image::spec_decoding.png[spec_decoding]
+image::spec_dec.png[spec_dec]
 
 The graph here from https://developers.redhat.com/articles/2025/07/01/fly-eagle3-fly-faster-inference-vllm-speculative-decoding#speculative_decoding__a_solution_for_faster_llms
 highlighs the tradeoffs of speculative decoding at low request rate vs bigger batch sizes.
@@ -277,10 +281,7 @@ Being a data-dependent technique, this is mostly useful when it is
 
 Optimization is an iterative process. As you tune vLLM, continuously monitor key metrics:
 
-Time To First Token (TTFT): Critical for interactive applications.
-
-Throughput (Tokens/sec or Requests/sec): To ensure your concurrency goals are met.
-
-GPU Utilization: High utilization indicates efficient use of resources.
-
-GPU KV cache usage:: At very high rates early on into a benchmark, it is an indicator of likely insufficient memory for KV cache.
+- Time To First Token (TTFT): Critical for interactive applications.
+- Throughput (Tokens/sec or Requests/sec): To ensure your concurrency goals are met.
+- GPU Utilization: High utilization indicates efficient use of resources.
+- GPU KV cache usage: At very high rates early on into a benchmark, it is an indicator of likely insufficient memory for KV cache.
