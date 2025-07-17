@@ -1,19 +1,12 @@
-= Pre-requisites:
+= Model optimization
 
-* A Visual Guide to Quantization
- - https://newsletter.maartengrootendorst.com/p/a-visual-guide-to-quantization
+* Deep dive presentation - link:https://docs.google.com/presentation/d/1_CKoP4EcjKNv7ykYplQNIjvyru9xp2Hn/edit?slide=id.g363272ea3ef_0_162#slide=id.g363272ea3ef_0_162[vLLM and LLM Compressor]
 
-
-== The deep dive content for this section can be found here - link:https://docs.google.com/presentation/d/1_CKoP4EcjKNv7ykYplQNIjvyru9xp2Hn/edit?slide=id.g363272ea3ef_0_162#slide=id.g363272ea3ef_0_162[LLM quantization]
-
-
-= 1. Model optimization
-
-== Challenges with running larger models
+=== Challenges with running larger models
 
 Even with the latest hardware like NVIDIA B200 GPUs offering up to 192GB of memory, the rapid increase in model sizes (e.g., GPT MoE 1.8T parameters) means that many state-of-the-art models cannot fit into a single GPU or even across multiple GPUs without optimization.
 
-image::why_optimize.png[why_optimize]
+image::why-optimize.png[why_optimize]
 
 Give below are simple examples that shows how much memory is required just for storing parameters in GPUs for larger models.
 
@@ -55,7 +48,7 @@ Llama 4 Maverick: 400B params
 |  3 x 80GB
 |===
 
-== What optimized models offer:
+=== What optimized models offer:
 
 * **Reduces GPU Memory requirements**
 ** Model parameters account for the majority of GPU RAM usage at typical sequence lengths.
@@ -93,9 +86,9 @@ In addition to the improvements described above, it also offers the following ad
 * **Enabling new use cases**: By reducing the size and resource requirements, model optimization makes it feasible to use advanced LLMs in scenarios previously not possible, such as mobile, IoT, or embedded systems.
 
 
-= 2. Quantization in practice 
+= Quantization in practice 
 
-== Quantization types in vLLM & LLM Compressor:
+=== Quantization types in vLLM & LLM Compressor:
 
 [cols="1,2,3,4", options="header"]
 |===
@@ -118,7 +111,7 @@ In addition to the improvements described above, it also offers the following ad
 
 |===
 
-== Supported quantization schemes and when to use what?
+=== Supported quantization schemes and when to use what?
 
 [cols="1,2,3,4", options="header"]
 |===
@@ -144,10 +137,10 @@ In addition to the improvements described above, it also offers the following ad
 | Speed-focused inference on modern hardware; 
 | Recommended for compute capability >=9.0 (Hopper and Blackwell).
 |===
-Source: link:https://docs.google.com/document/d/1W4-oUkftWhDcyDl78UZpaGKEbsVKj-KCLqwPqTrHfQc/edit?tab=t.9mplyhrbolhw#heading=h.ju5za4svfth1[vLLM technical guide].
+
 For a full list of supported hardware vs quantization scheme mapping, refer to the link:https://docs.vllm.ai/en/latest/features/quantization/supported_hardware.html#supported-hardware[vLLM documentation].
 
-== Supported quantization methods/recipies and when to use what?
+=== Supported quantization methods/recipies and when to use what?
 
 [cols="1,3,3", options="header"]
 |===
@@ -171,7 +164,7 @@ For a full list of supported hardware vs quantization scheme mapping, refer to t
 
 |===
 
-== Let's help a client select the quantization method and scheme
+=== Let's help a client select the quantization method and scheme
 
 [cols="1,1,2", options="header"]
 |===
@@ -202,7 +195,7 @@ Enough requests to saturate matrix‑mult units?
 | Tight budgets push you toward higher‑accuracy methods (GPTQ, SmoothQuant + GPTQ).
 |===
 
-== Example decision cheat sheet
+=== Example decision cheat sheet
 [cols="1,1,1,2", options="header"]
 |===
 | Chosen answers
@@ -232,7 +225,7 @@ Enough requests to saturate matrix‑mult units?
 |===
 
 
-== Quantization workflow
+=== Quantization workflow
 image::quantization_flow.png[quantization_flow]
 
 * Model selection and loading

@@ -5,7 +5,9 @@
 
 * xref:module-02.adoc[2. LLM Compressor, Model Quantization and Sparsification]
 ** xref:module-02.adoc#llm_compressor[LLM Compressor]
-** xref:module-bala.adoc#quantization_and_compression [Quantization and compression]
+** xref:module-optimization-theory.adoc#quantization_and_compression_theory [Model Optimization - Deep dive]
+** xref:module-optimization-lab-1.adoc#quantization_and_compression_lab_1 [Quantization in Practice - Lab]
+** xref:module-optimization-lab-2.adoc#quantization_and_compression_lab_2 [Quantization Pipeline - Lab]
 
 * xref:module-03.adoc[3. LLM evaluation with GuideLLM]
 ** xref:module-03.adoc#load_test[Load Testing]
