@@ -80,6 +80,69 @@ Llama 3-8B is a very popular, powerful small-size _dense_ model.
 
 Here are the primary avenues for optimization:
 
+## GPU Allocation & Batching Parameters: Managing Concurrency
+
+For a "given amount of concurrent users," how you manage batching is critical to maximize GPU utilization without introducing excessive queueing latency.
+Let's take a look at some of the most popular vllm configurations.
+
+`--max-model-len`: The maximum sequence length (prompt + generated tokens) the model can handle.
+Goal: Set this to the minimum _reasonable_ length for your use case. Too small means requests get truncated; too large means less space for KVCache, which will impact your performance.
+At startup, vllm will profile the model using this value, as it needs to ensure it is able to serve at least one request with length=max-model-len.
+This is also a trade-off with the next parameter, `max-num-seqs`.
+Tuning: If most of your requests are short, keeping max-model-len tighter can allow more requests into the batch (by increasing `max-num-seqs`).
+
+NOTE: `max-num-batched-tokens` is a highly related parameter. It's limiting the amount of tokens the scheduler can schedule, rather than what the model can produce.
+So the actual number limiting the amount of memory allocated for the model runtime is actually `min(max-model-len, max-num-batched-tokens)`.
+
+You can verify the impact of this parameter by increasing its value when starting vLLM and then observing the amount of memory reserved for KVCache.
+Check out the logs for our starting config:
+```
+# vllm serve ibm-granite/granite-3.3-8b-instruct --disable-log-requests --max-num-seqs 32 --max-model-len 2048
+. . .
+INFO 07-17 08:33:11 [gpu_worker.py:244] Available KV cache memory: 4.22 GiB
+INFO 07-17 08:33:11 [kv_cache_utils.py:732] GPU KV cache size: 27,680 tokens
+```
+
+And then try to increase model size to something like `--max-model-len 4096 --max-num-batched-tokens 4096`:
+```
+INFO 07-17 08:57:54 [gpu_worker.py:244] Available KV cache memory: 4.06 GiB
+INFO 07-17 08:57:55 [kv_cache_utils.py:732] GPU KV cache size: 26,608 tokens
+```
+
+
+`--max-num-seqs`: The maximum number of sequences (requests) that can be processed concurrently. This is often referred to as the batch size, allowing for higher throughput.
+Goal: Set this to the minimum _reasonable_ length for your use case. When this is too high, your requests under load might get fractioned into smaller 
+chunks resulting in higher end-to-end latency. If this too low, you might be under-utilizing your GPU resources.
+Let's see this case in practice. Modify the script to limit the number max requests to 1 and run with 4 requests at a time.
+```
+LOG_PREFIX=batch1
+MAX_NUM_SEQS=1
+REQUEST_RATES=4
+```
+What is happening here is that the engine is effectively being throttled and is only executing one request at a time. 
+```
+# Batch32 results
+---------------Time to First Token----------------
+Mean TTFT (ms):                          13283.81  
+Median TTFT (ms):                        11838.76  
+P99 TTFT (ms):                           35857.18  
+
+# Batch4 results
+---------------Time to First Token----------------
+Mean TTFT (ms):                          104897.19 
+Median TTFT (ms):                        104294.83 
+P99 TTFT (ms):                           211148.64 
+
+```
+This is almost 10x slower!
+
+Also notice another important indicator of an unhealthy deployment from the logs:
+```
+Engine 000: Avg prompt throughput: 80.0 tokens/s, Avg generation throughput: 14.9 tokens/s, Running: 1 reqs,==>Waiting: 95 reqs, GPU KV cache usage: 3.4%, Prefix cache hit rate: 16.3%
+```
+Especially when coupled with high waiting time (`vllm:request_queue_time_seconds` metric from `/v1/metrics`).
+
+
 ## Model Quantization
 
 Quantization is arguably the most impactful change you can make for latency, especially with vLLM's efficient kernel implementation for w8a16 or w4a16.
@@ -103,9 +166,9 @@ Similarly, check out FP4 versions when Nvidia Blackwell hardware is available.
 ```
 | Quantization Type | Recommended Hardware             | Key Benefits for Latency                                            | Memory Footprint (for Llama 3 8B) | Accuracy Consideration                                            | Notes                                                                                                                                                                                                            |
 | :---------------- | :------------------------------- | :------------------------------------------------------------------ | :-------------------------------- | :---------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **FP8 (E4M3/E5M2)** | NVIDIA H100, B200 (or newer)     | - Dedicated FP8 Tensor Cores for significantly higher throughput.   | 8B * 1 byte ~= 8 GB               | Minimal accuracy loss for Llama 3 models.                         | Already a standard for high-performance inference.                                                                                                                                                         |
-| **INT8 (e.g., AWQ)** | NVIDIA A100, A6000, RTX 3090 (or newer with Tensor Cores) | - Halves memory footprint.                                          | 8B * 1 byte ~= 8 GB               | Generally decent accuracy preservation.                           | Widely supported (across manufacturers) and fast.                                                                                                                                                        |
-| **INT4 (e.g., AWQ)** | NVIDIA A100, A6000, RTX 3090 (or newer with Tensor Cores) | - Extremely memory-efficient.                                       | 8B * 0.5 bytes ~= 4 GB            | Requires an accuracy trade-off.                                   | Pushes for absolute minimum latency.                                                                                                                                                                     |
+| **FP8 (E4M3/E5M2)** | NVIDIA H100 (or newer)     | - Dedicated FP8 Tensor Cores for significantly higher throughput.   | 8B * 1 byte ~= 8 GB               | Minimal accuracy loss for Llama 3 models.                         | Already a standard for high-performance inference.                                                                                                                                                         |
+| **INT8 (e.g., AWQ)** | NVIDIA A100, A6000 (or newer) | - Halves memory footprint.                                          | 8B * 1 byte ~= 8 GB               | Generally decent accuracy preservation.                           | Widely supported (across manufacturers) and fast.                                                                                                                                                        |
+| **INT4 (e.g., AWQ)** | NVIDIA A100, A6000 (or newer) | - Extremely memory-efficient.                                       | 8B * 0.5 bytes ~= 4 GB            | Requires an accuracy trade-off.                                   | Pushes for absolute minimum latency.                                                                                                                                                                     |
 | **FP4** | NVIDIA Blackwell (B200)          | - New architecture support for even lower-precision floating-point. | 8B * 0.5 bytes ~= 4 GB            | Designed to maintain better accuracy than integer 4-bit, but still requires validation. | Emerging standard with the latest hardware (e.g., NVIDIA Blackwell). Look for NVFP4 variants.                                                                                                            |
 ```
 
@@ -118,8 +181,8 @@ LOG_PREFIX=int8
 ```
 
 This is what we get, focusing on TTFT:
-```
-```
+
+image::quant_vs_unquantized.png[quant_vs_unquantized]
 
 Up to 2x speedup!
 
@@ -128,7 +191,8 @@ Up to 2x speedup!
 
 Following the same principle as quantization, serving a smaller model (when accuracy on task is acceptable) will enable faster response
 times as less data is moved around (model weights) and less sequential computations are involved (generally fewer layers).
-For this particular use-case, consider `Llama-3.2-3B` or even `Llama-3.2-1B`.
+For this particular use-case, consider `ibm-granite/granite-3.3-2b-instruct`.
+
 
 ### Using a different model.
 
@@ -149,6 +213,7 @@ vLLM Support: vLLM has strong support for MoE models like Mixtral, including opt
 Consider When: Your application might benefit from the increased quality often associated with larger (total parameter) MoE models, combined with the per-token speed advantages of their sparse computation. Benchmarking Mixtral 8x7B (or similar MoE) against your optimized Llama 3 8B on your specific workload is crucial
 
 ## Speculative Decoding.
+
 Speculative decoding is a powerful technique to reduce the per-token generation latency, particularly noticeable for the Time To First Token (TTFT).
 Speculative decoding is fundamentally a tradeoff: spend a little bit of extra compute to reduce memory movement.
 The extra compute is allocated towards the smaller draft model and consequent proposer verifying step.
@@ -158,39 +223,21 @@ However, at higher throughputs or batch sizes, we are compute-bound, and specula
 image::spec_decoding.png[spec_decoding]
 
 The graph here from https://developers.redhat.com/articles/2025/07/01/fly-eagle3-fly-faster-inference-vllm-speculative-decoding#speculative_decoding__a_solution_for_faster_llms
-highlighs the tradeoffs for when speculative decoding helps and when it can hurt performance as batch size increases.
+highlighs the tradeoffs of speculative decoding at low request rate vs bigger batch sizes.
 Take away message: as long as the number of requests is bound to use a non-intensive amount of GPU resources (lower req/s), spec decoding can provide
 a nice speedup.
 
-What to Try: You'll need to specify a smaller draft model. A good starting point for Llama might be a smaller Llama variant (e.g., Llama 3B) or as in this 
+What to try: You'll need to specify a smaller draft model. A good starting point for Llama/granite might be a smaller Llama/granite variant (e.g., Llama 3B) or as in this 
 example a speculator trained specifically for our use-case.
 
-vLLM Configuration:
-
-Bash
-
-python -m vllm.entrypoints.api_server \
-    --model meta-llama/Llama-3.2-8B-Instruct \
+```bash
+vllm serve --model meta-llama/Llama-3.2-8B-Instruct \
     --speculative-config '{"model": "yuhuili/EAGLE3-LLaMA3.2-Instruct-8B", "num_speculative_tokens": 3, "method":"eagle3", "draft_tensor_parallel_size":1}'  
+```
 
 vLLM will spin up an instance with the two models. 
 Mind that the GPU memory will now be comprised of: the original `Llama-3.2-8B-Instruct` weights + `EAGLE3-LLaMA3.2-Instruct-8B` proposer weights + a KV cache for *both* models.
 
-## GPU Allocation & Batching Parameters: Managing Concurrency
-For a "given amount of concurrent users," how you manage batching is critical to maximize GPU utilization without introducing excessive queueing latency.
-
-Goal: For latency, you want enough KV cache to prevent evictions, which cause re-computation and latency spikes.
---max-model-len: The maximum sequence length (prompt + generated tokens) the model can handle.
-Goal: Set this to the maximum reasonable length for your use case. Too small means requests get truncated; too large allocates more KV cache than necessary, potentially limiting concurrent requests.
-Tuning: If most of your requests are short, keeping max-model-len tighter can allow more requests into the batch.
-
-Tuning: Monitor your actual KV cache usage under your target concurrency. If you see high eviction rates, you might need more memory or a smaller batch size.
-
---max-num-seqs: The maximum number of sequences (requests) that can be processed concurrently.
-
-
-Tuning: For latency, ensure these values are high enough to accommodate your concurrent users and their expected output lengths without causing requests to queue extensively. 
-Increase them until you hit memory limits or observe diminishing returns. vLLM's PagedAttention is designed to be efficient here.
 
 
 3.5. Advanced Considerations
