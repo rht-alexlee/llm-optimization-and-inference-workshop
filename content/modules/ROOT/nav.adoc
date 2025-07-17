@@ -37,3 +37,6 @@
 *** xref:llm-d-guide.adoc#prerequisites[Prerequisites]
 *** xref:llm-d-guide.adoc#deployment[Deployment]
 ** xref:llm-d-guide.adoc#key-features[Key Features]
+
+
+* xref:quantized-model-capacity.adoc[LLM Compressor: Model Comparison Examples]
