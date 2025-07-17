@@ -2,9 +2,9 @@
 # Name: quantization-pipeline
 # Description: A pipeline for quantizing a model
 # Inputs:
-#    model_id: str [Default: 'ibm-granite/granite-3.2-2b-instruct']
-#    output_path: str [Default: 'granite-int8-pipeline']
-#    quantization_type: str [Default: 'int8']
+#    model_id: str [Default: 'ibm-granite/granite-3.3-2b-instruct']
+#    output_path: str [Default: 'granite-int4-pipeline']
+#    quantization_type: str [Default: 'int4']
 components:
   comp-createpvc:
     executorLabel: exec-createpvc
