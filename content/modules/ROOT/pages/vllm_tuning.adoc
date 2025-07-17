@@ -1,6 +1,6 @@
-# Case Study: Latency Optimization for Llama-3.2-8B-Instruct with vLLM
+# Case Study: Latency Optimization for granite-3.1-8b-instruct with vLLM
 
-Let's apply our knowledge to a concrete scenario: you need to serve Llama 3-8B, and your primary goal is to minimize inference latency 
+Let's apply our knowledge to a concrete scenario: you need to serve granite-3.1-8b-instruct, and your primary goal is to minimize inference latency 
 for a given number of concurrent users (eg 32 in this case) with an expected generation length <2048 tokens. 
 As you have limited flexibility to scale GPU resources, you want to understand the key vLLM parameters and strategies to maximize performance 
 before simply adding more hardware.
@@ -20,14 +20,16 @@ We can use this script as our starting point and the way we're going to benchmar
 ```bash
 #!/bin/bash
 
-MODEL=ibm-granite/granite-3.3-8b-instruct
+MODEL=ibm-granite/granite-3.1-8b-instruct
 LOG_PREFIX=
 
+MAX_NUM_SEQS=32
 PORT=8000
 HEALTH_ENDPOINT="http://localhost:$PORT/health"
 DEVICES="0"
+REQUEST_RATES="1 4 8 16"
 
-VLLM_CMD="CUDA_VISIBLE_DEVICES=$DEVICES vllm serve $MODEL --disable-log-requests --port $PORT --max-num-seqs 32 --max-model-len 2048 &"
+VLLM_CMD="CUDA_VISIBLE_DEVICES=$DEVICES vllm serve $MODEL --disable-log-requests --port $PORT --max-num-seqs $MAX_NUM_SEQS --max-model-len 2048 &"
 
 # Function to clean up if script is interrupted
 cleanup() {
@@ -37,24 +39,29 @@ cleanup() {
 }
 trap cleanup EXIT
 
-eval $VLLM_CMD
-VLLM_PID=$!
 
-# Wait for /health endpoint to be ready
-echo "Waiting for vLLM to become healthy..."
-until curl -sf "$HEALTH_ENDPOINT"; do
-    if ! ps -p $VLLM_PID > /dev/null; then
-        echo "vLLM process exited unexpectedly."
-        exit 1
-    fi
-    sleep 2
-done
+start_vllm() {
+    eval $VLLM_CMD
+    VLLM_PID=$!
 
-echo "vLLM is up and healthy!"
+    # Wait for /health endpoint to be ready
+    echo "Waiting for vLLM to become healthy..."
+    until curl -sf "$HEALTH_ENDPOINT"; do
+        if ! ps -p $VLLM_PID > /dev/null; then
+            echo "vLLM process exited unexpectedly."
+            exit 1
+        fi
+        sleep 2
+    done
 
-for request_rate in 1 4 8 16; do
+    echo "vLLM is up and healthy!"
+}
+
+for request_rate in $REQUEST_RATES; do
     BM_LOG="bm_${LOG_PREFIX}_${request_rate}.log"
-    # or python benchmarks/benchmark_serving.py \
+    echo "Running benchmark $BM_LOG"
+    # Start vLLM from scratch to avoid prefix cache interaction across request_rates (worst-case measurements)
+    start_vllm
     vllm bench serve \
         --backend vllm \
         --model $MODEL \
@@ -65,18 +72,23 @@ for request_rate in 1 4 8 16; do
         --ignore-eos \
         --num-prompts 100 \
         --port $PORT | tee "$BM_LOG"   
+    # Stop vLLM
+    cleanup
 done
+
 ```
 To benchmark the model here, we're going to simulate an artificial "dataset" using "vllm bench" utility command.
 
-Here's the starting results on single NVIDIA L4 GPU at vllm (`d0dc4cfca`):
-```
+Here's the starting results on single NVIDIA L4 GPU at vllm (`d0dc4cfca`), focusing on TTFT:
+image::starting_point.png[starting_point]
 
-```
+All reported times are in `ms`. All reported times are in milliseconds. Notice how quickly we exceed the "seconds" threshold with even a 
+slight increase in concurrent users—serving LLMs is hard!  
+
 
 # vLLM Tuning Strategies for Llama 3 8B Latency
 
-Llama 3-8B is a very popular, powerful small-size _dense_ model. 
+Granite-3.1-8b-instruct is a popular, powerful small-size _dense_ model. 
 
 Here are the primary avenues for optimization:
 
@@ -182,7 +194,7 @@ LOG_PREFIX=int8
 
 This is what we get, focusing on TTFT:
 
-image::quant_vs_unquantized.png[quant_vs_unquantized]
+image::quant_vs_unquant.png[quant_vs_unquantized]
 
 Up to 2x speedup!
 
@@ -190,13 +202,13 @@ Up to 2x speedup!
 ## Using a smaller model 
 
 Following the same principle as quantization, serving a smaller model (when accuracy on task is acceptable) will enable faster response
-times as less data is moved around (model weights) and less sequential computations are involved (generally fewer layers).
-For this particular use-case, consider `ibm-granite/granite-3.3-2b-instruct`.
+times as less data is moved around (model weights+activations) and less sequential computations are involved (generally fewer layers).
+For this particular use-case, consider `ibm-granite/granite-3.1-2b-instruct`.
 
 
-### Using a different model.
+### Using a different model
 
-While Llama 3 is a strong dense model, for certain latency-sensitive scenarios, considering a Mixture-of-Experts (MoE) model like Mixtral 8x7B could be a 
+While Granite 3 is a strong dense model, for certain latency-sensitive scenarios, considering a Mixture-of-Experts (MoE) model like Mixtral 8x7B could be a 
 compelling alternative.
 
 Why MoE for Latency? MoE models have a large total number of parameters (e.g., Mixtral 8x7B has 47B total parameters), but critically, 
@@ -208,13 +220,15 @@ Trade-offs: While MoE models can offer lower inference latency per token due to 
 to load the entire model's parameters, not just the active ones. So, Mixtral 8x7B will demand more VRAM than Llama 3 8B,
 even if it's faster per token. You'll need sufficient GPU memory (e.g., a single A100 80GB or multiple smaller GPUs with tensor parallelism) to fit the full 47B parameters.
 
-vLLM Support: vLLM has strong support for MoE models like Mixtral, including optimizations for their unique sparse compute patterns and dynamic routing.
+vLLM has strong support for MoE models like Mixtral, including optimizations for their unique sparse compute patterns and dynamic routing.
 
-Consider When: Your application might benefit from the increased quality often associated with larger (total parameter) MoE models, combined with the per-token speed advantages of their sparse computation. Benchmarking Mixtral 8x7B (or similar MoE) against your optimized Llama 3 8B on your specific workload is crucial
+Consider When: Your application might benefit from the increased quality often associated with larger (total parameter) MoE models, combined with the per-token speed advantages 
+of their sparse computation.
+
 
 ## Speculative Decoding.
 
-Speculative decoding is a powerful technique to reduce the per-token generation latency, particularly noticeable for the Time To First Token (TTFT).
+Speculative decoding is a powerful technique to reduce the generation latency, particularly noticeable for the Time To First Token (TTFT).
 Speculative decoding is fundamentally a tradeoff: spend a little bit of extra compute to reduce memory movement.
 The extra compute is allocated towards the smaller draft model and consequent proposer verifying step.
 At low request rates, we are memory-bound, so reducing memory movement can really help with latency. 
@@ -227,51 +241,46 @@ highlighs the tradeoffs of speculative decoding at low request rate vs bigger ba
 Take away message: as long as the number of requests is bound to use a non-intensive amount of GPU resources (lower req/s), spec decoding can provide
 a nice speedup.
 
-What to try: You'll need to specify a smaller draft model. A good starting point for Llama/granite might be a smaller Llama/granite variant (e.g., Llama 3B) or as in this 
-example a speculator trained specifically for our use-case.
+NOTE: Speculative decoding in vLLM is not yet fully optimized and does not always yield intended inter-token latency reductions. In particular in this case it will fallback to V0 due to
+V1 still not supporting this particular speculation technique. Mind that what we're comparing here is not going to be exactly apples to apples, as the V0 and V1 engine have quite
+substantial architectural differences. 
+
+What to try: You'll need to specify a smaller draft model. A good starting point for Llama/granite might be a smaller Llama/granite variant or as in this 
+example a speculator trained specifically for our use-case. Let's change the vllm startup command:
 
 ```bash
-vllm serve --model meta-llama/Llama-3.2-8B-Instruct \
-    --speculative-config '{"model": "yuhuili/EAGLE3-LLaMA3.2-Instruct-8B", "num_speculative_tokens": 3, "method":"eagle3", "draft_tensor_parallel_size":1}'  
+VLLM_CMD="vllm serve $MODEL --max-num-seqs $MAX_NUM_SEQS --max-model-len 2048 --enable-chunked-prefill --max-num-batched-tokens 2048  --speculative-config\
+ '{\"model\": \"ibm-granite/granite-3.0-8b-instruct-accelerator\", \"num_speculative_tokens\": 4, \"draft_tensor_parallel_size\": 1}' &"
 ```
 
 vLLM will spin up an instance with the two models. 
-Mind that the GPU memory will now be comprised of: the original `Llama-3.2-8B-Instruct` weights + `EAGLE3-LLaMA3.2-Instruct-8B` proposer weights + a KV cache for *both* models.
+There's no free-lunch though, mind that the GPU memory will now be comprised of: the original `ibm-granite/granite-3.1-8b-instruct` weights + `ibm-granite/granite-3.0-8b-instruct-accelerator` proposer weights
+ + a KV cache for *both* models.
+
+image::spec.png[specized]
 
 
+A key metric to keep an eye on when serving a speculator is the `acceptance rate`:
+```
+INFO 07-17 11:11:38 [metrics.py:439] Speculative metrics: Draft acceptance rate: 0.381, System efficiency: 0.427, Number of speculative tokens: 3, Number of accepted tokens: 3781, Number of draft tokens: 9930, Number of emitted tokens: 5657.
+```
 
-3.5. Advanced Considerations
-FlashAttention / PagedAttention: Llama 3 8B benefits heavily from optimized attention mechanisms. vLLM uses PagedAttention which incorporates FlashAttention (or equivalent optimized kernels) under the hood. Ensure your vLLM installation is leveraging these. This is usually automatic but worth confirming if you encounter unexpected performance.
+This is the percentage of tokens being produced by the speculator that match the ones of the draft model.
+Here we're still on the lower side as ideally you would want to see this number be higher.
 
-## Data Parallelism: Scaling for Concurrent Users
-While Tensor Parallelism (discussed below) aims to reduce the latency of a single, very large model by sharding its layers across multiple GPUs, Data Parallelism serves a different, but equally important, purpose: scaling the number of concurrent requests you can serve efficiently.
-
-How it Works: In a data parallel setup, the entire model (Llama 3 8B in our case) is replicated on multiple GPUs or even across multiple nodes. Each GPU (or set of GPUs using tensor parallelism) then independently processes a different batch of incoming requests. The requests are distributed among these model replicas.
-
-Impact on Latency: Data parallelism does not reduce the per-token latency of a single request. The time it takes for one request to complete on a single GPU remains roughly the same. However, by having multiple model replicas, you can process many more requests simultaneously. This significantly increases the overall system throughput and dramatically reduces the queuing time for individual requests when your service experiences high concurrency.
-
-When to Use It:
-
-When your model (like Llama 3 8B in FP16/INT8) already fits comfortably on one or a few GPUs using tensor parallelism.
-
-When your primary bottleneck is serving a large number of concurrent users, leading to long queues and high average latency.
-
-When you have enough GPU resources to spare for model replication.
+This is tied to major drawback holding back the adoptability of speculative decoding, which is the fact that the speculator needs to be trained specifically for the model you intend to deploy,
+in order to achieve an high acceptance rate.
+Being a data-dependent technique, this is mostly useful when it is 
 
 
+### Final Notes
 
-Hardware Choice: While this guide focuses on tuning vLLM, the underlying hardware is fundamental. H100 (for FP8) or A100 (for INT8/FP16) are the recommended choices for low-latency LLM inference.
-
-Monitoring and Iteration
 Optimization is an iterative process. As you tune vLLM, continuously monitor key metrics:
 
 Time To First Token (TTFT): Critical for interactive applications.
-
-Time To Last Token (TLT) / Per-Token Latency: Overall response time.
 
 Throughput (Tokens/sec or Requests/sec): To ensure your concurrency goals are met.
 
 GPU Utilization: High utilization indicates efficient use of resources.
 
-KV Cache Eviction Rate: High rates indicate insufficient memory for KV cache.
-
+GPU KV cache usage:: At very high rates early on into a benchmark, it is an indicator of likely insufficient memory for KV cache.
