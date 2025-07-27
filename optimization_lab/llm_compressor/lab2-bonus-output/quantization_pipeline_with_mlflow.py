@@ -1,4 +1,5 @@
 from kfp import compiler, dsl
+from kfp.dsl import InputPath, OutputPath
 from kfp.kubernetes import (
     add_toleration,    
     CreatePVC,
@@ -16,7 +17,7 @@ OPTIMIZED_MODEL_PATH = MOUNT_POINT + "/optimized-model"
     base_image='registry.access.redhat.com/ubi9/python-312',
     packages_to_install=[
         'huggingface-hub',
-        # 'boto3',
+        #'boto3',
     ]
 )
 def download_model(
@@ -54,7 +55,7 @@ def quantize_model(
     # 2) Data calibration
     from datasets import load_dataset
 
-    # Exercise left for the attendees:
+    # Exercise left for the attendance:
     # This is harcoded but it could be parametrized in the pipeline
     NUM_CALIBRATION_SAMPLES = 256  # 1024
     DATASET_ID = "neuralmagic/LLM_compression_calibration"
@@ -83,6 +84,7 @@ def quantize_model(
     from llmcompressor.modifiers.quantization import GPTQModifier
     from llmcompressor.transformers import oneshot
     from llmcompressor.modifiers.smoothquant import SmoothQuantModifier
+    from llmcompressor.modifiers.quantization import QuantizationModifier
 
     # Exercise left for the attendance:
     # This is harcoded but it could be parametrized in the pipeline
@@ -118,17 +120,39 @@ def quantize_model(
                 group_size=GROUP_SIZE
             )
         ]
+    elif quantization_type == "fp8":
+        # Configuring simple PTQ quantization for fp8; 
+        recipe = [
+            QuantizationModifier(
+                targets="Linear", 
+                scheme="FP8_DYNAMIC", 
+                ignore=ignore
+            )
+        ]
     else:
         raise ValueError(f"Quantization type {quantization_type} not supported")
 
-    oneshot(
-        model=model,
-        dataset=ds,
-        recipe=recipe,
-        num_calibration_samples=NUM_CALIBRATION_SAMPLES,
-        max_seq_length=8196,
-    )
+    # pass the right set of params for oneshot
+    # simple PTQ (fp8 dynamic) does not require calibration data for weight quantization
+    def init_oneshot():
+        if quantization_type in ["int8", "int4"]: 
+            return oneshot(
+                    model=model,
+                    dataset=ds,
+                    recipe=recipe,
+                    num_calibration_samples=NUM_CALIBRATION_SAMPLES,
+                    max_seq_length=8196,
+                )
+        elif quantization_type == "fp8":
+            return oneshot(
+                    model=model,
+                    recipe=recipe,
+                    max_seq_length=8196,
+                )
+        else:
+            raise ValueError(f"Unsupported quantization_type: {quantization_type}")            
 
+    init_oneshot()
     # Save to disk compressed.
     model.save_pretrained(output_path, save_compressed=True)
     tokenizer.save_pretrained(output_path)
@@ -180,6 +204,8 @@ def upload_model(
 )
 def evaluate_model(
     model_path: str,
+    eval_tasks: str,
+    results_json: OutputPath()
 ):
     """ Command to execute:
     lm_eval --model vllm \
@@ -189,6 +215,7 @@ def evaluate_model(
       --num_fewshot 5 \
       --limit 250 \
       --batch_size 'auto'
+      --output_path "results_json"
     """
     import subprocess
     import os
@@ -202,10 +229,11 @@ def evaluate_model(
                              "--model", "vllm",
                              "--model_args", model_args,
                              "--trust_remote_code",
-                             "--tasks", "gsm8k",
+                             "--tasks", eval_tasks,
                              "--num_fewshot", "5",
-                             "--limit", "250",
-                             "--batch_size", "auto"],
+                             "--limit", "50",
+                             "--batch_size", "auto",
+                             "--output_path", results_json],
                             capture_output=True, text=True, env=env)
     # Check for errors or output
     if result.returncode == 0:
@@ -215,6 +243,78 @@ def evaluate_model(
         print("Error evaluating the model:")
         print(result.stderr)
 
+@dsl.component(
+    base_image='registry.access.redhat.com/ubi9/python-312',
+    packages_to_install=[
+        'mlflow',
+        'pandas'
+    ]
+)
+def log_to_mlflow(
+    results_json: InputPath(),
+    mlflow_tracking_uri: str,
+    model_id: str,
+    quantization_type: str
+):
+    import json
+    import pandas as pd
+    import mlflow
+    import glob, os
+    import re
+    from datetime import datetime
+    import glob
+
+    matches = glob.glob(os.path.join(results_json, "**", "*.json"), recursive=True)
+    if not matches:
+        raise RuntimeError("No JSON found")
+    
+    results_json_file = matches[0]
+    print(f"[DEBUG] Using JSON file for MLflow logging: {results_json_file}")
+
+
+    def generate_run_name(model_id: str, quant_type: str) -> str:
+        safe_model_id = re.sub(r'\W', '_', str(model_id))
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return f"{safe_model_id}_{quant_type}_{timestamp}"
+
+    experiment_name = generate_run_name(model_id, quantization_type)    
+
+    with open(results_json_file) as f:
+        data = json.load(f)
+
+    # Flatten numeric metrics dynamically
+    flat = []
+    for task, metrics in data.get("results", {}).items():
+        for key, value in metrics.items():
+            if key == "alias":
+                continue
+            try:
+                numeric = float(value)
+            except (ValueError, TypeError):
+                continue
+            metric, variant = key.split(",", 1)
+            flat.append({
+                "task": task,
+                "metric": metric,
+                "variant": variant,
+                "value": numeric
+            })
+
+    df = pd.DataFrame(flat)
+
+    mlflow.set_tracking_uri(mlflow_tracking_uri)
+    mlflow.set_experiment(experiment_name)
+    with mlflow.start_run():
+        mlflow.log_artifact(results_json, artifact_path="lm_eval_json")
+
+        for _, row in df.iterrows():
+            name = f"{row['task']}_{row['metric']}_{row['variant']}"
+            mlflow.log_metric(name, row["value"])
+
+        # save and log a CSV summary
+        tmp_csv = "/tmp/lm_eval_metrics.csv"
+        df.to_csv(tmp_csv, index=False)
+        mlflow.log_artifact(tmp_csv, artifact_path="lm_eval_metadata")
 
 @dsl.pipeline(
     name="Quantization Pipeline",
@@ -224,6 +324,8 @@ def quantization_pipeline(
     model_id: str="ibm-granite/granite-3.3-2b-instruct",
     output_path: str="granite-int4-pipeline",
     quantization_type: str="int4",
+    eval_tasks: str="gsm8k,arc_easy",
+    mlflow_tracking_uri: str="http://mlflow-server.mlflow.svc.cluster.local:8080"
 ):
     #Steps:
     # 1) Download model
@@ -304,6 +406,7 @@ def quantization_pipeline(
 
     evaluate_model_task = evaluate_model(
         model_path=OPTIMIZED_MODEL_PATH,
+        eval_tasks=eval_tasks,
     )
     evaluate_model_task.set_caching_options(False)
     evaluate_model_task.after(
@@ -320,6 +423,14 @@ def quantization_pipeline(
         pvc_name=quantization_pvc_task.output,
         mount_path=MOUNT_POINT,
     )
+
+    log_task = log_to_mlflow(
+        results_json=evaluate_model_task.outputs["results_json"],
+        mlflow_tracking_uri=mlflow_tracking_uri,
+        model_id=model_id, 
+        quantization_type=quantization_type
+    )
+    log_task.after(evaluate_model_task)    
 
     quantization_pvc_delete_task = DeletePVC(
         pvc_name=quantization_pvc_task.output,

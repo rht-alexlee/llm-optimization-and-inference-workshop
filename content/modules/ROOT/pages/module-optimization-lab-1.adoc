@@ -1,68 +1,109 @@
 = Weights and Activation Quantization (W4A16)
 
-In this exercise, we will use a notebook to investigate how LLMs weights and activations can be quantized to **W4A16** for memory savings and inference acceleration. This quantization method is particularly useful for:
+== Learning Objectives
 
-- Reducing model size
-- Maintaining good performance during inference
+By completing this exercise, you will:
 
-The quantization process involves the following steps:
+* Understand W4A16 quantization and its benefits for LLM optimization
+* Learn to set up a complete quantization pipeline using OpenShift AI
+* Gain hands-on experience with SmoothQuant and GPTQ quantization techniques
+* Evaluate quantized model performance and memory efficiency
+
+== Overview
+
+In this exercise, you will use a Jupyter notebook to investigate how LLM weights and activations can be quantized to **W4A16** format. This quantization method reduces memory usage while maintaining model performance during inference.
+
+**W4A16 Quantization** compresses model weights to 4-bit precision while keeping activations at 16-bit precision, achieving significant memory savings with minimal accuracy loss.
+
+**Key Quantization methods:**
+
+* **SmoothQuant**: Reduces activation outliers by smoothing weight and activation quantization
+* **GPTQ**: Post-training quantization method that maintains model quality through careful calibration
+
+You'll follow these main steps to quantize your model:
 
 1. **Load the model**: Load the pre-trained LLM model
-2. **Choose the quantization scheme and method** - Refer to the slides for a quick recap of the schemes and formats supported
-3. **Prepare calibration dataset**: Prepare the right dataset for calibration
+2. **Choose the quantization scheme and method**: Refer to the slides for a quick recap of the schemes and formats supported
+3. **Prepare calibration dataset**: Prepare the appropriate dataset for calibration
 4. **Quantize the model**: Convert the model weights and activations to **W4A16** format
-   ** Using SmoothQuant and GPTQ
-5. **Save the model**: Save the quantized model to a suitable storage
+   * Using SmoothQuant and GPTQ
+5. **Save the model**: Save the quantized model to suitable storage
 6. **Evaluate the model**: Evaluate the quantized model's accuracy
 
-== Pre-requisites
-To start the lab, perform the following pre-requisite setup activities.
+== Prerequisites
+Before beginning the quantization exercise, complete these setup steps:
 
-. Create a Data Science Project
-. Create Data Connections - To store the quantized model
-. Deploy a Data Science Pipeline Server
-. Launch a Workbench
-. Clone the Git Repo `https://github.com/redhat-ai-services/etx-llm-optimization-and-inference-leveraging.git` into the workbench
+* Create a Data Science Project
+* Create Data Connections - To store the quantized model
+* Deploy a Data Science Pipeline Server
+* Launch a Workbench
 
-==== Creating a Data Science Project
 
-* In the OpenShift AI Dashboard application, navigate to the Data Science Projects menu on the left:
+=== Creating a Data Science Project
+_Estimated time: 1-2 minutes_
+
+First, create a project to organize your quantization work.
+
+* Navigate to **Data Science Projects** in the left menu of the OpenShift AI Dashboard:
 +
 [.bordershadow]
-image::quant-ds-proj-nav.png[title="OpenShift AI Dashboard", link=self, window=blank, width=100%]
+image::quant-ds-proj-nav.png[title="Navigate to Data Science Projects in OpenShift AI Dashboard", link=self, window=blank, width=100%]
 
-* Create a `Data Science project` with the name `quantization` 
+* Create a Data Science Project with the name `quantization`:
 +
 [.bordershadow]
-image::quant-create-project.png[title="Project", link=self, window=blank, width=100%]
+image::quant-create-project.png[title="Create Data Science Project Named 'quantization'", link=self, window=blank, width=100%]
 
-==== Creating a Data Connection for the Pipeline Server
+Verify that your project appears in the Data Science Projects list with the name "quantization" and shows a "Ready" status.
 
-* To provide a S3 storage for pipeline server and for saving the quantized model to S3, create a new OpenShift Project `minio` and set up `MinIO` by applying the manifest available at `optimization_lab/minio.yaml`. The default credentials for accessing MinIO are `minio/minio123`
+=== Setting up S3-compatible storage
+_Estimated time: 3-5 minutes_
+
+Next, configure storage for the pipeline server and quantized models.
+
+* Clone the link:https://github.com/redhat-ai-services/etx-llm-optimization-and-inference-leveraging.git[Git repository] from to your local machine.
+* Log in to OpenShift and set up MinIO storage:
++
 [source,bash]
 ----
-oc apply -n minio.yaml
+oc login --token=<<TOKEN>>
+oc new-project minio
+oc apply -f optimization_lab/llm_compressor/minio.yaml -n minio
 ----
++
+Use the default MinIO credentials: `minio` for the username and `minio123` for the password.
 
-* Login to MinIO with the credentials `minio/minio123` and create two buckets with the names `pipeline` and `models`. 
+* Log in to MinIO with the credentials `minio/minio123` and create two buckets with the names `pipeline` and `models`.
 
-* Create a new `Data Connection` that points to it.
+Confirm that:
+
+* MinIO pods are running in the `minio` namespace: `oc get pods -n minio`
+* You can access the MinIO web interface
+* Both `pipeline` and `models` buckets exist in MinIO
+
+=== Creating a Data Connection for the Pipeline Server
+_Estimated time: 2-3 minutes_
+
+Now configure the data connection to link your pipeline server to MinIO storage.
+
+* Navigate to the `quantization` project in the OpenShift AI dashboard
+* Click **Add Data Connection**:
 
 [.bordershadow]
-image::quant-add-dc.png[title="Connection", link=self, window=blank, width=100%]
+image::quant-add-dc.png[title="Add Data Connection Button in quantization Project", link=self, window=blank, width=100%]
 
 
-* Select the connection type **S3 compatible object storage -v1** and use the following values for configuring the MinIO connection.
+* Select the connection type **S3-compatible object storage -v1** and use the following values for configuring the MinIO connection:
 +
 [.bordershadow]
-image::quant-add-dc-type.png[title="S3 comaptible object storage", link=self, window=blank, width=100%]
+image::quant-add-dc-type.png[title="Select S3-compatible Object Storage Connection Type", link=self, window=blank, width=100%]
 
 ** Name:
 [.lines_space]
 [.console-input]
 [source, text]
 [subs=attributes+]
-Pipeline
+pipeline-connection
 ** Access Key:
 [.lines_space]
 [.console-input]
@@ -94,120 +135,155 @@ none
 [subs=attributes+]
 pipelines
 
-* The result should look similar to:
+* Verify your connection configuration matches this example:
 +
 [.bordershadow]
-image::quant-data-connection.png[title="Result", link=self, window=blank, width=100%]
+image::quant-data-connection.png[title="Data Connection Configuration", link=self, window=blank, width=100%]
 
-* Create another Data Connection with the name `minio-models` using the same MinIO connection details with the bucket name as "models"
+* Create a second Data Connection named `minio-models`:
+  - Use the same MinIO connection details as above
+  - Change the bucket name to `models`
 
-==== Creating a Pipeline Server
+Check that both data connections appear in your project:
 
-* It is recommended to create the pipeline server before creating a workbench.
+* `pipeline-connection` - connected to `pipelines` bucket
+* `minio-models` - connected to `models` bucket
 
-* Go to the Data Science Project `quantization` -> **Data science pipelines** -> **Pipelines** -> click on **Configure Pipeline Server**
+=== Creating a Pipeline Server
+_Estimated time: 5-8 minutes_
+
+Create the pipeline server before setting up your workbench.
+
+* In the **quantization** project, navigate to **Data science pipelines** > **Pipelines**
+* Click **Configure Pipeline Server**:
 +
 [.bordershadow]
-image::quant-pipelineserver01.png[title="Pipeline Server 1", link=self, window=blank, width=100%]
+image::quant-pipelineserver01.png[title="Configure Pipeline Server Button Location", link=self, window=blank, width=100%]
 
-* Use the same information as in the Data Connection created earlier (**Pipeline**) and click the **Configure Pipeline Server** button:
+* Select the **pipeline-connection** Data Connection you created earlier
+* Click **Configure Pipeline Server**:
 +
 [.bordershadow]
-image::quant-pipelineserver02.png[title="Pipeline Server 2", link=self, window=blank, width=100%]
+image::quant-pipelineserver02.png[title="Pipeline Server Configuration with Data Connection", link=self, window=blank, width=100%]
 
-* When the pipeline server is ready, the screen will look like the following:
+* Wait a few minutes for the pipeline server to deploy. The Pipelines section will display this status:
 +
 [.bordershadow]
-image::quant-pipelineserver03.png[title="Pipeline Server 3", link=self, window=blank, width=100%]
+image::quant-pipelineserver03.png[title="Successfully Deployed Pipeline Server Status", link=self, window=blank, width=100%]
 
-At this point, the pipeline server is ready and deployed.
+NOTE: This may take a few minutes to complete. There is no need to wait for the pipeline server to be ready. You may proceed to the next steps and check this later.
 
-NOTE: There is no need for wait for the pipeline server to be ready. You may go on to the next steps and check this out later on. This may take more than a couple of minutes to complete.
+Verify that the pipeline server is running:
+* No error messages appear in the pipelines section
 
-==== Creating a Workbench
+=== Creating a Workbench
+_Estimated time: 4-8 minutes (including startup)_
 
-* Once the Data Connection and Pipeline Server are fully created, it's time to create the workbench
-* Go to **Data Science Projects**, select the project `quantization`, and click on **Create a workbench**
+With your Data Connection and Pipeline Server configured, you can now create the workbench environment.
+
+* In the `quantization` project, click **Create a workbench**:
 +
 [.bordershadow]
-image::quant-create-wb.png[title="Create Workbench", link=self, window=blank, width=100%]
-* Make sure it has the following characteristics:
-** Choose a name for it, like: `granite-quantization` 
-** Image Selection: `Minimal Python` or `Standard Data Science` 
-** Container Size: `Medium` 
-** Accelerator: `NVIDIA-GPU` 
-* That should look like:
+image::quant-create-wb.png[title="Create Workbench Button in quantization Project", link=self, window=blank, width=100%]
+* Configure the workbench with these settings:
+** **Name**: `granite-quantization` (or your preferred name)
+** **Image Selection**: `Minimal Python` or `Standard Data Science`
+** **Container Size**: `Medium`
+** **Accelerator**: `NVIDIA-GPU`
 +
 [.bordershadow]
-image::quant-launch-workbench-01.png[title="Launch Workbench", link=self, window=blank, width=100%]
-* Add the created Data Connection by clicking on the Connections section and selecting **Attach existing connections**. Then, click **Attach** for the created **minio-models** connection. 🔗
+image::quant-launch-workbench-01.png[title="Workbench Configuration Settings with GPU Accelerator", link=self, window=blank, width=100%]
+* Attach the **minio-models** Data Connection:
+  - Click the **Connections** section
+  - Select **Attach existing connections**
+  - Click **Attach** for the **minio-models** connection
 +
 [.bordershadow]
-image::quant-add-dc-01.png[title="Add Data Connection", link=self, window=blank, width=100%]
+image::quant-add-dc-01.png[title="Select Attach Existing Connections Option", link=self, window=blank, width=100%]
 +
 [.bordershadow]
-image::quant-attach-dc.png[title="Attach Data Connection", link=self, window=blank, width=100%]
+image::quant-attach-dc.png[title="Attach minio-models Data Connection to Workbench", link=self, window=blank, width=100%]
 
-* Then, click on **Create Workbench** and wait for the workbench to be fully started. 
-* Once it is, click the link besides the name of the workbench to connect to it! 
+* Click **Create Workbench** and wait for it to start
+* When the workbench status shows **Running**, click the link beside its name to open it:
 +
 [.bordershadow]
-image::quant-open-link.png[title="Open Link", link=self, window=blank, width=100%]
+image::quant-open-link.png[title="Click Workbench Link to Launch Jupyter", link=self, window=blank, width=100%]
 
-* Authenticate with the same credentials as earlier. 
+* Authenticate with your OpenShift login credentials
 * You will be asked to accept the following settings:
 +
 [.bordershadow]
-image::quant-accept.png[title="Accept Settings", link=self, window=blank, width=100%]
+image::quant-accept.png[title="Accept Jupyter Notebook Server Settings", link=self, window=blank, width=100%]
 
-* Once you accept it, you should now see this:
+* After accepting the settings, the Jupyter interface will load:
 +
 [.bordershadow]
-image::quant-jupyter.png[title="Jupyter", link=self, window=blank, width=100%]
+image::quant-jupyter.png[title="Jupyter Interface Successfully Loaded", link=self, window=blank, width=100%]
 
-==== Git clone the Common Repo
+Confirm that:
 
-We will clone the content of our Git repo so that you can access all the materials created as part of our prototyping exercise. 📚
+* Workbench status shows "Running" 
+* Jupyter interface loads without errors
+* You can see the file browser and available kernels in the workbench
+* GPU is accessible (if applicable) from the workbench
 
-* Using the Git UI:
-** Open the Git UI in Jupyter:
+=== Clone the repository
+_Estimated time: 1-2 minutes_
+
+With Jupyter running, clone the exercise repository to access the quantization notebooks.
+
+* Open the Git UI in Jupyter:
 +
 [.bordershadow]
-image::quant-git-clone-1.png[title="Git UI", link=self, window=blank, width=100%]
-+
-** Enter the URL of the Git repo:
-+
+image::quant-git-clone-1.png[title="Open Git Clone Interface in Jupyter", link=self, window=blank, width=100%]
+
+* Specify the Git repository as:
 [.console-input]
 [source,adoc]
 [subs=attributes+]
 ----
 https://github.com/redhat-ai-services/etx-llm-optimization-and-inference-leveraging.git
 ----
-+
+
 [.bordershadow]
-image::quant-git-clone-2.png[title="Git Clone", link=self, window=blank, width=100%]
+image::quant-git-clone-2.png[title="Successfully Cloned Repository in Jupyter Environment", link=self, window=blank, width=100%]
 
-At this point, the project is ready for the quantization work. 
+You have now completed the setup and can proceed with the quantization exercise.
 
+Before starting the quantization exercise, verify:
+
+* Repository is cloned successfully in Jupyter
+* `optimization_lab/llm_compressor/` folder exists and contains:
+  - `weight_activation_quantization.ipynb` notebook
+  - `minio.yaml` file
+  - `quantization_pipeline.py` file
+* Data connections are accessible from the workbench environment
+* GPU resources are available for quantization tasks
 
 == Exercise: Quantize the Model with llm-compressor
+_Estimated time: 15-20 minutes (depending on model size and GPU performance)_
 
-From the `optimization_lab/llm_compressor` folder, open the notebook `weight_activation_quantization.ipynb` and follow the instructions.
-[.bordershadow]
-image::quantization-int8-notebook.png[title="Notebook", link=self, window=blank, width=100%]
+Now you'll perform the actual quantization using the provided Jupyter notebook.
 
-To execute the cells you can select them and either click on the **play** icon or press **Shift + Enter**
-[.bordershadow]
-image::quantization-notebook-cell-status.png[title="Execute Cell", link=self, window=blank, width=100%]
+* Navigate to the `optimization_lab/llm_compressor` folder
+* Open the notebook `weight_activation_quantization.ipynb`:
 
-When the cell is being executed, you can see **[*]**. And once the execution has completed, you will see a number instead of the *, e.g., **[1]**
 [.bordershadow]
-image::quantization-notebook-execute-cell.png[title="Cell Status", link=self, window=blank, width=100%]
+image::quantization-int8-notebook.png[title="Weight Activation Quantization Notebook Ready to Execute", link=self, window=blank, width=100%]
 
-When done, you can close the notebook and head to the next page.
+To execute the cells, you can select them and either click on the **play** icon or press **Shift + Enter**:
+[.bordershadow]
+image::quantization-notebook-cell-status.png[title="How to Execute Notebook Cells Using Play Button", link=self, window=blank, width=100%]
 
-IMPORTANT: Once you complete all the quantization exercises and you no longer need the workbench, ensure you **stop it** so that the associated GPU gets freed and can be utilized to serve the model.
+When the cell is being executed, you can see **[*]**. Once the execution has completed, you will see a number instead of the *, e.g., **[1]**:
 [.bordershadow]
-image::quantization-notebook-workbench-done.png[title="Workbench Done", link=self, window=blank, width=100%]
+image::quantization-notebook-execute-cell.png[title="Cell Execution Status Indicators in Notebook", link=self, window=blank, width=100%]
+
+When you complete the notebook exercises, close the notebook and continue to the next module.
+
+IMPORTANT: Once you complete this exercise and you no longer need the workbench, ensure you **stop it** so that the associated GPU gets freed and can be utilized to serve the model.
 [.bordershadow]
-image::quantization-notebook-workbench-stop.png[title="Workbench Stop", link=self, window=blank, width=100%]
+image::quantization-notebook-workbench-done.png[title="Access Workbench Actions Menu", link=self, window=blank, width=100%]
+[.bordershadow]
+image::quantization-notebook-workbench-stop.png[title="Stop Workbench to Free GPU Resources", link=self, window=blank, width=100%]
