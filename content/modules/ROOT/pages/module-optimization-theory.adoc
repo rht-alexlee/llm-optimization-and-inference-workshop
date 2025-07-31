@@ -1,6 +1,7 @@
 = Model optimization
 
-* Deep dive presentation - link:https://docs.google.com/presentation/d/1_CKoP4EcjKNv7ykYplQNIjvyru9xp2Hn/edit?slide=id.g363272ea3ef_0_162#slide=id.g363272ea3ef_0_162[vLLM and LLM Compressor]
+* Deep dive presentation 
+- link:https://docs.google.com/presentation/d/1_CKoP4EcjKNv7ykYplQNIjvyru9xp2Hn/edit[LLM Compressor Deep Dive]
 
 === Challenges with running larger models
 
