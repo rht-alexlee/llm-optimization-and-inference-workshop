@@ -40,11 +40,11 @@ inferenceService:
     - "--max-num-seqs=32"
     - "--max-model-len=2048"
 ----
-
++
 *--disable-log-requests* is used to prevent the logging of detailed request information. By default, vLLM logs various details about each incoming request, which can be useful for debugging and monitoring. However, in production environments or when high performance is critical, excessive logging can consume resources and generate large log files. The --disable-log-requests flag addresses this by turning off the detailed logging of individual requests.
-
++
 *--max-num-seqs* configuring the server to handle a maximum of 32 concurrent requests in a single parallel computation step (a batch). For example, if 32 different users send a prompt to your chatbot at the same time.
-
++
 *--max-model-len* argument sets the maximum number of tokens that the vLLM server will allow for a single sequence. This total includes both the user's prompt and the generated response combined.
 
 . Now that we've set the engine arguments we'll go ahead and deploy the granite model with Helm.
@@ -61,9 +61,35 @@ helm upgrade -i granite-8b-instruct redhat-ai-services/vllm-kserve --version "0.
 
 image::granite-deployed-rhoai.png[Granite deployed on RHOAI]
 
-. We'll be running an OpenShift pipeline with GuideLLM to benchmark our model as we step through the optimizations.
+. We'll be running an OpenShift pipeline with GuideLLM to benchmark our model as we step through the optimizations. Clone the following repository.
++
+[source,sh,role=execute]
+----
+git clone https://github.com/jhurlocker/guidellm-pipeline.git
+----
 
+. Run the below commands to deploy the pipeline and tasks. We'll also deploy Minio so we can upload our results to an s3 bucket.
++
+[source,sh,role=execute]
+----
+oc apply -f pipeline/upload-results-task.yaml -n rhaiis-demo
+oc apply -f pipeline/guidellm-pipeline.yaml -n rhaiis-demo
+oc apply -f pipeline/guidellm-benchmark-task.yaml -n rhaiis-demo
+oc apply -f pipeline/mino.yaml -n rhaiis-demo
+----
 
+. Lets run the GuideLLM pipeline! Open the _guidellm-pipelinerun.yaml_ file. Let's go through some of the GuideLLM arguments we're setting. The pipeline will run a benchmark for 1, 4, 8, and 16 concurrent users. 
++
+image::pipelinerun.png[pipelinerun]
+
+. Update the _target_ parameter with your inference endpoint. Run the pipeline:
++
+[source,sh,role=execute]
+----
+oc apply -f pipeline/guidellm-pipelinerun.yaml -n rhaiis-demo
+----
+
+== Use
 //// 
 We can use this script as our starting point and the way we're going to benchmark our model as we step through the optimizations:
 
