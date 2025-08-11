@@ -3,9 +3,13 @@
 :toc: false
 :numbered: true
 
-# Activity 2: Evaluating Model Accuracy with lm-eval-harness + MMLU-Pro
+# Evaluating Model Accuracy with Trusty AI lm-eval-harness service
 
 While performance metrics like latency and throughput are critical for deploying efficient GenAI systems, **task-level accuracy and reasoning quality** are equally essential for selecting or fine-tuning a model. In this activity, we use the popular lm-eval-harness framework to evaluate how well a language model performs across established benchmarks, focusing on reasoning and subject matter understanding.
+
+## What is Trusty AI?
+
+https://trustyai.org/docs/main/main
 
 ## What is lm-eval-harness?
 
@@ -27,70 +31,78 @@ Today we will be running the mmlu_pro evaluation.
 
 ## Today's Activity
 
-This activity uses a wrapper around lm-eval-harness and IBM’s Unitxt to make evaluation easier against locally hosted models via OpenAI-compatible inference endpoints like vLLM. It simplifies dataset downloads, task configuration, and results formatting—allowing you to quickly test your model on benchmarks like MMLU-Pro.
+In this section of our lab we will:
 
-In this hands-on example, you’ll:
+. Set up the Trusty AI operator
+. Create and run the lm-eval job
+. Interpret and understand results
 
-. Set up datasets using the CLI
+### Setup Trusty AI
 
-. Run accuracy benchmarks against a vLLM-served model
+* Go to the DataScienceCluster resource instance.
 
-. Explore how our model performs across standardized tasks
+* Change the trustyai managementState from "Removed" to "Managed"
+https://github.com/trustyai-explainability/llama-stack-provider-lmeval/blob/main/demos/00-getting_started_with_lmeval.ipynb
+https://trustyai.org/docs/main/lm-eval-tutorial#_examples
 
-### Setup
 
-Activate the same python virtual environment we used in the last activity, located in `/home/dev` and install the **llm-eval-test** package.
+#### Create and run lm-eval job
 
-[source,console,role=execute,subs=attributes+]
-----
-source venv/bin/activate
-pip install git+https://github.com/sjmonson/llm-eval-test.git
-----
-
-#### Check available CLI options
+Create an lm-eval job from the lmevaljob.yaml file. Let's review the contents:
 
 [source,console,role=execute,subs=attributes+]
 ----
-llm-eval-test run --help
+apiVersion: trustyai.opendatahub.io/v1alpha1
+kind: LMEvalJob
+metadata:
+  name: evaljob
+spec:
+  model: local-completions
+  taskList:
+    taskNames:
+      - mmlu
+  logSamples: true
+  batchSize: '1'
+  # allowOnline: true
+  # allowCodeExecution: true
+  modelArgs:
+    - name: model
+      value: granite-8b-instruct-vllm-kserve
+    - name: base_url
+      value: https://granite-8b-instruct-vllm-kserve-guidellm-benchmark.apps.cluster-ld95z.ld95z.sandbox671.opentlc.com/v1/completions 
+    - name: num_concurrent
+      value:  "1"
+    - name: max_retries
+      value:  "3"
+    - name: tokenized_requests
+      value: "False"
+    - name: processor
+      value: ibm-granite/granite-3.3-8b-instruct
+  outputs:
+    pvcName: "tokenizer-pvc"
+  pod: 
+    container:
+      resources:
+          limits: 
+            cpu: '1'
+            memory: 8Gi
+            nvidia.com/gpu: '1'
+          requests:
+            cpu: '1'
+            memory: 8Gi
+            nvidia.com/gpu: '1'
 ----
 
-View our https://github.com/openshift-psap/llm-eval-test[repository] here.
-
-### Prepare Dataset Directory
+Once the pod is created from the job, add the following to the tolerations section of the pod spec.
 
 [source,console,role=execute,subs=attributes+]
 ----
-DATASETS_DIR=$(pwd)/datasets
-mkdir $DATASETS_DIR
-DATASET=TIGER-Lab/MMLU-Pro
+tolerations:
+- key: "nvidia.com/gpu"
+  operator: "Equal"
+  value: "True"
+  effect: "NoSchedule"
 ----
-
-### Download Dataset
-
-[source,console,role=execute,subs=attributes+]
-----
-llm-eval-test download --datasets $DATASETS_DIR --tasks mmlu_pro
-----
-
-### Define Your Model + Endpoint
-
-We will use the Granite model still being served by vLLM. If this model is no longer deployed, please return to activity 1 to re-deploy the container.
-
-[source,console,role=execute,subs=attributes+]
-----
-ENDPOINT=http://localhost:8000/v1/completions
-MODEL_NAME=ibm-granite/granite-3.3-2b-instruct
-TOKENIZER=ibm-granite/granite-3.3-2b-instruct
-----
-
-### Run the evaluation
-
-[source,console,role=execute,subs=attributes+]
-----
-llm-eval-test run --endpoint $ENDPOINT --model $MODEL_NAME --datasets $DATASETS_DIR --tasks mmlu_pro
-----
-
-This may take ~10 minutes.
 
 ### While You Wait: What is lm-eval-harness?
 
@@ -98,7 +110,7 @@ This may take ~10 minutes.
 
 * View real Red Hat https://huggingface.co/collections/RedHatAI/red-hat-ai-validated-models-v10-682613dc19c4a596dbac9437[validated model results] to understand benchmark outcomes in production contexts and to see how your favorite models rank.
 
-## INterpreting MMLU-Pro Results
+## Interpreting MMLU-Pro Results
 
 **Accuracy**: The primary metric is multiple-choice accuracy, indicating how often the model selects the correct answer from 10 options.
 
@@ -116,17 +128,5 @@ This may take ~10 minutes.
 
 This activity showed how to:
 
-* Use llm-eval-harness via an OpenAI-compatible wrapper (llm-eval-test)
-
-* Run benchmarks with MMLU-Pro
-
-* Interpret accuracy-based metrics to guide model selection
-
 Next steps might include:
-
-* Comparing two models (e.g., open vs. fine-tuned)
-
-* Adding custom tasks or subject domains
-
-* Visualizing per-subject scores for insight into model gaps
 
