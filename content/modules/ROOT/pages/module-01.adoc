@@ -58,7 +58,7 @@ helm upgrade -i granite-8b-instruct redhat-ai-services/vllm-kserve --version "0.
 ----
 
 . Login to OpenShift AI and go to your *rhaiis-demo* Data Science Project. Wait until the model fully deploys (green check) before continuing. 
-
++
 image::granite-deployed-rhoai.png[Granite deployed on RHOAI]
 
 . We'll be running an OpenShift pipeline with GuideLLM to benchmark our model as we step through the optimizations. Clone the following repository.
@@ -127,11 +127,9 @@ image::extract_results.png[extract benchmark results]
 image::ttft_chart.png[TTFT chart]
 
 
-== Batch Processing Case Study: Throughput Optimization for granite-3.1-8b-instruct with vLLM
-TODO - write an intro paragraph on a processing use case - Batch processing job that analyzes 100,000 customer reviews every night. 
-
-== Use
 //// 
+== Use
+
 We can use this script as our starting point and the way we're going to benchmark our model as we step through the optimizations:
 
 ```bash
@@ -230,7 +228,7 @@ So the actual number limiting the amount of memory allocated for the model runti
 You can verify the impact of this parameter by increasing its value when starting vLLM and then observing the amount of memory reserved for KVCache.
 Check out the logs for our starting config:
 
-_Out starting config listed here for reference. No need to apply it again_
+_Our starting config listed here for reference only. No need to apply it again_
 ```
 inferenceService:
   storage:
@@ -367,7 +365,7 @@ vllm:request_queue_time_seconds_sum{model_name=
 ----
 
 
-## Model Quantization
+== Model Quantization
 
 Quantization is arguably the most impactful change you can make for latency, especially with vLLM's efficient kernel implementation for w8a16 or w4a16.
 
@@ -387,38 +385,119 @@ can reduce the model to 8B * 0.5 bytes = 4 GB. This is extremely memory-efficien
 Test accuracy thoroughly with your specific use case, as 4-bit can sometimes be more sensitive.
 Similarly, check out FP4 versions when Nvidia Blackwell hardware is available.
 
-```
-| Quantization Type | Recommended Hardware             | Key Benefits for Latency                                            | Memory Footprint (for Llama 3 8B) | Accuracy Consideration                                            | Notes                                                                                                                                                                                                            |
-| :---------------- | :------------------------------- | :------------------------------------------------------------------ | :-------------------------------- | :---------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **FP8 (E4M3/E5M2)** | NVIDIA H100 (or newer)     | - Dedicated FP8 Tensor Cores for significantly higher throughput.   | 8B * 1 byte ~= 8 GB               | Minimal accuracy loss for Llama 3 models.                         | Already a standard for high-performance inference.                                                                                                                                                         |
-| **INT8 (e.g., AWQ)** | NVIDIA A100, A6000 (or newer) | - Halves memory footprint.                                          | 8B * 1 byte ~= 8 GB               | Generally decent accuracy preservation.                           | Widely supported (across manufacturers) and fast.                                                                                                                                                        |
-| **INT4 (e.g., AWQ)** | NVIDIA A100, A6000 (or newer) | - Extremely memory-efficient.                                       | 8B * 0.5 bytes ~= 4 GB            | Requires an accuracy trade-off.                                   | Pushes for absolute minimum latency.                                                                                                                                                                     |
-| **FP4** | NVIDIA Blackwell (B200)          | - New architecture support for even lower-precision floating-point. | 8B * 0.5 bytes ~= 4 GB            | Designed to maintain better accuracy than integer 4-bit, but still requires validation. | Emerging standard with the latest hardware (e.g., NVIDIA Blackwell). Look for NVFP4 variants.                                                                                                            |
-```
+[.table-scroll-wrapper]
+--
+[options="header"]
+|===
+| Quantization Type | Recommended Hardware | Key Benefits for Latency | Memory Footprint (for Llama 3 8B) | Accuracy Consideration | Notes
 
-Please refer to the compatiblity chart https://docs.vllm.ai/en/latest/features/quantization/supported_hardware.html for up to date quantization support in vLLM.
+| **FP8 (E4M3/E5M2)**
+| NVIDIA H100 (or newer)
+| - Dedicated FP8 Tensor Cores for significantly higher throughput.
+| 8B * 1 byte ~= 8 GB
+| Minimal accuracy loss for Llama 3 models.
+| Already a standard for high-performance inference.
 
-Let us try to run a w8a8 int8 model, by referring to the original script:
-```
-MODEL=RedHatAI/granite-3.1-8b-instruct-quantized.w8a8
-LOG_PREFIX=int8
-```
+| **INT8 (e.g., AWQ)**
+| NVIDIA A100, A6000 (or newer)
+| - Halves memory footprint.
+| 8B * 1 byte ~= 8 GB
+| Generally decent accuracy preservation.
+| Widely supported (across manufacturers) and fast.
 
-This is what we get, focusing on TTFT:
+| **INT4 (e.g., AWQ)**
+| NVIDIA A100, A6000 (or newer)
+| - Extremely memory-efficient.
+| 8B * 0.5 bytes ~= 4 GB
+| Requires an accuracy trade-off.
+| Pushes for absolute minimum latency.
+
+| **FP4**
+| NVIDIA Blackwell (B200)
+| - New architecture support for even lower-precision floating-point.
+| 8B * 0.5 bytes ~= 4 GB
+| Designed to maintain better accuracy than integer 4-bit, but still requires validation.
+| Emerging standard with the latest hardware (e.g., NVIDIA Blackwell). Look for NVFP4 variants.
+|===
+--
+
+Please refer to the compatiblity chart https://docs.vllm.ai/en/latest/features/quantization/supported_hardware.html[^] for up to date quantization support in vLLM.
+
+. Let us try to run a w8a8 int8 model with the original vLLM engine arguments we started with. Update the _/openshift-ai/values.yaml_ with the following values. Make sure you update the storageUri with the correct model.
++
+[source,sh,role=execute]
+----
+inferenceService:
+  storage:
+    mode: uri
+    storageUri: oci://quay.io/redhat-ai-services/modelcar-catalog:granite-3.1-8b-instruct-quantized.w8a8
+  args:
+    - "--disable-log-requests"
+    - "--max-num-seqs=32"
+    - "--max-model-len=2048"
+----
+
+. Rerun the helm deployment
++
+[source,sh,role=execute]
+----
+helm upgrade -i granite-8b-instruct redhat-ai-services/vllm-kserve --version "0.3.8" \
+  --values openshift-ai/values.yaml
+----
+
+. After the model redeploys update the _/guidellm-pipeline/pipeline/guidellm-pipelinerun.yaml_ *rate* to 1.0, 4.0, 8.0, 16.0. 
++
+image::benchmark_rate_1_4_8_16.png[set the rate to 4, align="left"]
+
+. Rerun the guidellm benchmark pipeline.
++
+[source,sh,role=execute]
+----
+oc create -f guidellm-pipeline/pipeline/guidellm-pipelinerun.yaml -n rhaiis-demo
+----
+
+. After the pipeline finishes go to your OpenShift AI workbench and open the _graph_benchmarks.ipynb_ file. Execute the first cell to download the latest benchmark file.
+
+. Copy and paste the code snippet below into the second cell or edit your code to be the same. This code extracts the median TTFT from our first benchmark run with the full weight Granite model and extract the median TTFT from the most recent benchmark with the quantized version.
++
+Execute the cell. 
++
+[source,sh,role=execute]
+----
+#extract the Metadata benchmark and the median TTFTs
+from parse_benchmark_stats import extract_ttft_from_file
+data = extract_ttft_from_file('benchmark_1.txt')
+data2 = extract_ttft_from_file(latest_file)
+print(data)
+print(data2)
+----
+
+. Copy and paste the code snippet below into the third cell or edit your code to be the same. This will generate a graph of the median TTFT for the poission rate for both models.
++
+Execute the cell.
++
+[source,sh,role=execute]
+----
+#graph of median TTFT vs poisson rate
+%pip -q install seaborn
+from seaborn_graph import create_ttft_plot
+create_ttft_plot(data, data2, 'granite-3.3-8b-instruct', 'granite-3.1-8b-instruct-quantized.w8a8')
+----
+
+Your chart should look similar to the one below.
 
 image::quant_vs_unquant.png[quant_vs_unquantized]
 
 Up to 2x speedup!
 
-
-## Using a smaller model 
+== Using a smaller model 
 
 Following the same principle as quantization, serving a smaller model (when accuracy on task is acceptable) will enable faster response
 times as less data is moved around (model weights+activations) and less sequential computations are involved (generally fewer layers).
 For this particular use-case, consider `ibm-granite/granite-3.1-2b-instruct`.
 
 
-### Using a different model
+=== Using a different model
 
 While Granite 3 is a strong dense model, for certain latency-sensitive scenarios, considering a Mixture-of-Experts (MoE) model like Mixtral 8x7B could be a 
 compelling alternative.
@@ -438,7 +517,7 @@ Consider When: Your application might benefit from the increased quality often a
 of their sparse computation.
 
 
-## Speculative Decoding.
+== Speculative Decoding.
 
 Speculative decoding is a powerful technique to reduce the generation latency, particularly noticeable for the Time To First Token (TTFT).
 Speculative decoding is fundamentally a tradeoff: spend a little bit of extra compute to reduce memory movement.
@@ -484,8 +563,10 @@ This is tied to major drawback holding back the adoptability of speculative deco
 in order to achieve an high acceptance rate.
 Being a data-dependent technique, this is mostly useful when it is 
 
+== Batch Processing Case Study: Throughput Optimization for granite-3.1-8b-instruct with vLLM
+TODO - write an intro paragraph on a processing use case - Batch processing job that analyzes 100,000 customer reviews every night. 
 
-### Final Notes
+== Final Notes
 
 Optimization is an iterative process. As you tune vLLM, continuously monitor key metrics:
 
