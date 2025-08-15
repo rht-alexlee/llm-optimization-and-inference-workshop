@@ -1,21 +1,46 @@
-# Case Study: Latency Optimization for granite-3.1-8b-instruct with vLLM
+= Case Study: Latency Optimization for granite-3.1-8b-instruct with vLLM
 
-Let's apply our knowledge to a concrete scenario: you need to serve granite-3.1-8b-instruct, and your primary goal is to minimize inference latency 
-for a given number of concurrent users -32 in this case- with an expected generation length <2048 tokens. 
-As you have limited flexibility to scale GPU resources, you want to understand the key vLLM parameters and strategies to maximize performance 
-before simply adding more hardware.
+Let's apply our knowledge to a concrete scenario: you need to serve granite-3.1-8b-instruct, and your primary goal is to minimize inference latency pass:[<span title="Latency: The time it takes for a single request to complete." style="cursor: help;">&#128161;</span>] for a given number of concurrent users -32 in this case- with an expected generation length <2048 tokens. 
+As you have limited flexibility to scale GPU resources, you want to understand the key vLLM parameters and strategies to maximize performance before simply adding more hardware.
 
 
-# Introduction
+== Introduction
 
-Before diving into tuning, it's important to reiterate the interplay:
+Before diving into tuning, it's important to understand the key performance considerations in vLLM:
 
+* *Latency*: The time it takes for a single request to complete.
+Of particular importance here is going to be tracking the Time To First Token - *TTFT* pass:[<span title="TTFT: How quickly the user sees the first word of the response." style="cursor: help;">&#128161;</span>], which will ensure the user can experience snappier responses.
 
-Latency: The time it takes for a single request to complete.
-Of particular importance here is going to be tracking the Time To First Token - *TTFT*, which will ensure the user can experience snappier responses.
-
-Throughput: The number of requests (or tokens) processed per unit of time. 
+* *Throughput*: The number of requests (or tokens) processed per unit of time. 
 While we're optimizing for latency, higher throughput often means better resource utilization, which can indirectly help avoid latency spikes due to queuing.
+
+. First we'll need to deploy the granite-3.1-8b-instruct. Open a terminal and login to your OpenShift cluster. Create a new project name rhaiis-demo.
+
+```
+oc new-project rhaiis-demo
+```
+
+. We'll be deploying granite-3.1-8b-instruct through a Helm chart. Clone the following repo:
+
+```
+https://github.com/redhat-ai-services/inference-service-on-multiple-platforms.git
+```
+
+. Open the values.yaml file so we can add our engine arguments and specify the storageUri. 
+
+```
+inferenceService:
+  storage:
+    mode: uri
+    storageUri: oci://image-registry.openshift-image-registry.svc:5000/rhaiis-demo/granite-8b-instruct-vllm-kserve
+  args:
+    - "--disable-log-requests"
+    - "--max-num-seqs=32"
+    - "--max-model-len=2048"
+```
+
+
+. We'll be running an OpenShift pipeline with GuideLLM to benchmark our model as we step through the optimizations.
 
 We can use this script as our starting point and the way we're going to benchmark our model as we step through the optimizations:
 
@@ -81,6 +106,7 @@ done
 ```
 The script will simply spin up a vLLM instance and benchmark for a particular amount of concurrent users.
 To benchmark the model here, we're going to simulate an artificial "dataset" using "vllm bench" utility command.
+
 
 Here's the starting results on single NVIDIA L4 GPU at vllm (`d0dc4cfca`), focusing on TTFT:
 

@@ -1,8 +1,8 @@
 = vLLM & Performance Tuning
 
-== Chatbot Case Study: Latency Optimization for granite-3.1-8b-instruct with vLLM
+== Chatbot Case Study: Latency Optimization for granite-3.3-8b-instruct with vLLM
 
-Let's apply our knowledge to a concrete scenario: you need to serve granite-3.1-8b-instruct that is integrated with a chat application. Your primary goal is to minimize inference latency pass:[<span title="Latency: The time it takes for a single request to complete." style="cursor: help;">&#128161;</span>] for a given number of concurrent users -32 in this case- with an expected generation length <2048 tokens. 
+Let's apply our knowledge to a concrete scenario: you need to serve granite-3.3-8b-instruct that is integrated with a chat application. Your primary goal is to minimize inference latency pass:[<span title="Latency: The time it takes for a single request to complete." style="cursor: help;">&#128161;</span>] for a given number of concurrent users -32 in this case- with an expected generation length <2048 tokens. 
 As you have limited flexibility to scale GPU resources, you want to understand the key vLLM parameters and strategies to maximize performance before simply adding more hardware.
 
 == Introduction
@@ -13,14 +13,14 @@ Before diving into tuning, it's important to understand the key performance cons
 
 *Throughput*: The number of requests (or tokens) processed per unit of time. While we're optimizing for latency, higher throughput often means better resource utilization, which can indirectly help avoid latency spikes due to queuing.
 
-. First we'll need to deploy the granite-3.1-8b-instruct. Open a terminal and login to your OpenShift cluster. Create a new project name rhaiis-demo.
+. First we'll need to deploy the granite-3.3-8b-instruct. Open a terminal and login to your OpenShift cluster. Create a new project name rhaiis-demo.
 +
 [source,sh,role=execute]
 ----
 oc new-project rhaiis-demo
 ----
 
-. We'll be deploying granite-3.1-8b-instruct through a Helm chart. Clone the following repo:
+. We'll be deploying granite-3.3-8b-instruct through a Helm chart. Clone the following repo:
 +
 [source,sh,role=execute]
 ----
@@ -34,7 +34,7 @@ git clone https://github.com/redhat-ai-services/inference-service-on-multiple-pl
 inferenceService:
   storage:
     mode: uri
-    storageUri: oci://image-registry.openshift-image-registry.svc:5000/rhaiis-demo/granite-8b-instruct-vllm-kserve
+    storageUri: oci://quay.io/redhat-ai-services/modelcar-catalog:granite-3.3-8b-instruct
   args:
     - "--disable-log-requests"
     - "--max-num-seqs=32"
@@ -196,7 +196,7 @@ done
 ```
 The script will simply spin up a vLLM instance and benchmark for a particular amount of concurrent users.
 To benchmark the model here, we're going to simulate an artificial "dataset" using "vllm bench" utility command.
-////
+
 
 
 Here's the starting results on single NVIDIA L4 GPU at vllm (`d0dc4cfca`), focusing on TTFT:
@@ -206,20 +206,20 @@ image::starting_point.png[starting_point]
 All reported times are in `ms`. All reported times are in milliseconds. Notice how quickly we exceed the "seconds" threshold with even a 
 slight increase in concurrent users—serving LLMs is hard!  
 
+////
 
-# vLLM Tuning Strategies for Llama 3 8B Latency
+== vLLM Tuning Strategies for Granite 3.3 8B Latency
 
-Granite-3.1-8b-instruct is a popular, powerful small-size _dense_ model. 
+Granite-3.3-8b-instruct is a popular, powerful small-size _dense_ model. Here are the primary avenues for optimization.
 
-Here are the primary avenues for optimization:
-
-## GPU Allocation & Batching Parameters: Managing Concurrency
+=== GPU Allocation & Batching Parameters: Managing Concurrency
 
 For a "given amount of concurrent users," how you manage batching is critical to maximize GPU utilization without introducing excessive queueing latency.
 Let's take a look at some of the most popular vllm configurations.
 
 `--max-model-len`: The maximum sequence length (prompt + generated tokens) the model can handle.
-Goal: Set this to the minimum _reasonable_ length for your use case. Too small means requests get truncated; too large means less space for KVCache, which will impact your performance.
+
+*Goal*: Set this to the minimum _reasonable_ length for your use case. Too small means requests get truncated; too large means less space for KVCache, which will impact your performance.
 At startup, vllm will profile the model using this value, as it needs to ensure it is able to serve at least one request with length=max-model-len.
 This is also a trade-off with the next parameter, `max-num-seqs`.
 Tuning: If most of your requests are short, keeping max-model-len tighter can allow more requests into the batch (by increasing `max-num-seqs`).
@@ -229,51 +229,142 @@ So the actual number limiting the amount of memory allocated for the model runti
 
 You can verify the impact of this parameter by increasing its value when starting vLLM and then observing the amount of memory reserved for KVCache.
 Check out the logs for our starting config:
+
+_Out starting config listed here for reference. No need to apply it again_
 ```
-# vllm serve ibm-granite/granite-3.3-8b-instruct --disable-log-requests --max-num-seqs 32 --max-model-len 2048
-. . .
-INFO 07-17 08:33:11 [gpu_worker.py:244] Available KV cache memory: 4.22 GiB
-INFO 07-17 08:33:11 [kv_cache_utils.py:732] GPU KV cache size: 27,680 tokens
+inferenceService:
+  storage:
+    mode: uri
+    storageUri: oci://quay.io/redhat-ai-services/modelcar-catalog:granite-3.3-8b-instruct
+  args:
+    - "--disable-log-requests"
+    - "--max-num-seqs=32"
+    - "--max-model-len=2048"
 ```
 
-And then try to increase model size to something like `--max-model-len 4096 --max-num-batched-tokens 4096`:
-```
-INFO 07-17 08:57:54 [gpu_worker.py:244] Available KV cache memory: 4.06 GiB
-INFO 07-17 08:57:55 [kv_cache_utils.py:732] GPU KV cache size: 26,608 tokens
-```
+. Go to your OpenShift web console. Select the *rhaiis-demo* project and open the logs for the *granite-8b-instruct-vllm-kserve-predictor-00003-deploymentXXXXX* pod. 
++
+image::granite-pod.png[Granite pod]
++
+Note the KV cache size at the top of the log
++
+[subs=+quotes]
+----
+INFO 08-14 20:42:55 worker.py:267] model weights take 15.25GiB; 
+non_torch_memory takes 0.04GiB;
+PyTorch activation peak memory takes 0.22GiB; 
+the rest of the memory reserved for *KV Cache is 4.24GiB*
+----
 
+. Now increase the model size to `--max-model-len 4096 --max-num-batched-tokens 4096`:
++
+Open _openshift-ai/values.yaml_ and set the below configuration:
++
+[source,sh,role=execute]
+----
+inferenceService:
+  storage:
+    mode: uri
+    storageUri: oci://quay.io/redhat-ai-services/modelcar-catalog:granite-3.3-8b-instruct
+  args:
+    - "--disable-log-requests"
+    - "--max-num-seqs=32"
+    - "--max-model-len=4096"
+    - "--max-num-batched-tokens 4096"
+----
++
+. Rerun the helm deployment
++
+[source,sh,role=execute]
+----
+helm upgrade -i granite-8b-instruct redhat-ai-services/vllm-kserve --version "0.3.8" \
+  --values openshift-ai/values.yaml
+----
+
+. After the model is redeployed take a look at the KV Cache size in the pod's log file. Note that the KV Cache size is now smaller than it was before.
++
+[subs=+quotes]
+----
+INFO 08-14 22:44:39 worker.py:267] model weights take 15.25GiB; 
+non_torch_memory takes 0.04GiB; 
+PyTorch activation peak memory takes 0.43GiB; 
+the rest of the memory reserved for *KV Cache is 4.03GiB*.
+----
 
 `--max-num-seqs`: The maximum number of sequences (requests) that can be processed concurrently. This is often referred to as the batch size, allowing for higher throughput.
-Goal: Set this to the minimum _reasonable_ length for your use case. When this is too high, your requests under load might get fractioned into smaller 
-chunks resulting in higher end-to-end latency. If this too low, you might be under-utilizing your GPU resources.
-Let's see this case in practice. Modify the script to limit the number max requests to 1 and run with 4 requests at a time.
-```
-LOG_PREFIX=batch1
-MAX_NUM_SEQS=1
-REQUEST_RATES=4
-```
-What is happening here is that the engine is effectively being throttled and is only executing one request at a time. 
-```
-# Batch32 results
----------------Time to First Token----------------
-Mean TTFT (ms):                          13283.81  
-Median TTFT (ms):                        11838.76  
-P99 TTFT (ms):                           35857.18  
 
-# Batch4 results
----------------Time to First Token----------------
-Mean TTFT (ms):                          104897.19 
-Median TTFT (ms):                        104294.83 
-P99 TTFT (ms):                           211148.64 
+*Goal*: Set this to the minimum _reasonable_ length for your use case. When this is too high, your requests under load might get fractioned into smaller 
+chunks resulting in higher end-to-end latency. If this is too low, you might be under-utilizing your GPU resources.
 
-```
-This is almost 10x slower!
+Let's see this case in practice. Modify the script to limit the number max requests to 1 and run the benchmark pipeline with 4 requests at a time.
 
-Also notice another important indicator of an unhealthy deployment from the logs:
-```
-Engine 000: Avg prompt throughput: 80.0 tokens/s, Avg generation throughput: 14.9 tokens/s, Running: 1 reqs,==>Waiting: 95 reqs, GPU KV cache usage: 3.4%, Prefix cache hit rate: 16.3%
-```
-Especially when coupled with high waiting time (`vllm:request_queue_time_seconds` metric from `/v1/metrics`).
+. Update the _/openshift-ai/values.yaml_ with the `max-num-seqs` to 1.
++
+[source,sh,role=execute]
+----
+inferenceService:
+  storage:
+    mode: uri
+    storageUri: oci://quay.io/redhat-ai-services/modelcar-catalog:granite-3.3-8b-instruct
+  args:
+    - "--disable-log-requests"
+    - "--max-num-seqs=1"
+    - "--max-model-len=2048"
+----
+
+. Rerun the helm deployment
++
+[source,sh,role=execute]
+----
+helm upgrade -i granite-8b-instruct redhat-ai-services/vllm-kserve --version "0.3.8" \
+  --values openshift-ai/values.yaml
+----
+
+. After the model redeploys update the _/guidellm-pipeline/pipeline/guidellm-pipelinerun.yaml_ *rate* to 4.0. 
++
+image::benchmark_rate_4.png[set the rate to 4, align="left"]
+
+. Rerun the guidellm benchmark pipeline.
++
+[source,sh,role=execute]
+----
+oc create -f guidellm-pipeline/pipeline/guidellm-pipelinerun.yaml -n rhaiis-demo
+----
+
+. After the pipeline finishes go to your OpenShift AI workbench and open the _graph_benchmarks.ipynb_ file. Execute the first cell to download the latest benchmark file.
++
+image::cell1_notebook.png[download latest benchmark, align="left"]
+
+. Open the *benchmark_1.txt* file and the latest benchmark file (*benchmark_<TIMESTAMP>.txt*) you just downloaded from Minio. Go to *View -> Wrap Words* so it's easier to read the files.
++
+What is happening here is that the engine is effectively being throttled and is only executing one request at a time. This is over 6x slower!
++
+.Latest benchmark file
+image::benchmark-rate4seq1.png[most recent benchmark, align="left"]
++
+.First benchmark file
+image::benchmark1-rate4seq32.png[first benchmark, align="left"]
++
+Also notice another important indicator of an unhealthy deployment from the logs. Note the 31 pending requests:
++
+[subs=+quotes]
+----
+INFO 08-14 23:05:18 metrics.py:455] Avg prompt throughput: 152.5 tokens/s, 
+Avg generation throughput: 14.3 tokens/s, 
+Running: 1 reqs, Swapped: 0 reqs, *Pending: 31 reqs*, 
+GPU KV cache usage: 2.9%, CPU KV cache usage: 0.0%.
+----
++
+Especially when coupled with high waiting time (`vllm:request_queue_time_seconds_sum` metric from `/metrics`). 
++
+You can access the metrics by going to 
+your https://<INFERENCE_ENDPOINT>/metrics in a browser.
++
+[subs=+quotes]
+----
+vllm:request_queue_time_seconds_sum{model_name=
+"granite-8b-instruct-vllm-kserve"} 35.21637320518494
+----
 
 
 ## Model Quantization
@@ -402,6 +493,11 @@ Optimization is an iterative process. As you tune vLLM, continuously monitor key
 - Throughput (Tokens/sec or Requests/sec): To ensure your concurrency goals are met.
 - GPU Utilization: High utilization indicates efficient use of resources.
 - GPU KV cache usage: At very high rates early on into a benchmark, it is an indicator of likely insufficient memory for KV cache.
+
+Important engine arguments
+- https://docs.vllm.ai/en/v0.9.0/usage/usage_stats.html
+- VLLM_NO_USAGE_STATS=1
+- DO_NOT_TRACK=1
 
 == Existing Slides
 
