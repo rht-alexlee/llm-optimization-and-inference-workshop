@@ -85,17 +85,15 @@ Run the following commands to deploy our vLLM-kserve helm chart.
 
 OPTIONAL: Before deploying, adjust your `values.yaml` file as you desire as described in above sections.
 
-```
-git clone https://github.com/redhat-ai-services/inference-service-on-multiple-platforms.git
-cd inference-service-on-multiple-platforms
-```
+// Git clone repo location of custom values file specifying raw deployment and anything else desired for model deployment
 
 ```
-helm repo add redhat-ai-services https://redhat-ai-services.github.io/helm-charts/
+oc create namespace model-namespace
 helm repo update redhat-ai-services
-helm upgrade -i granite-8b-instruct redhat-ai-services/vllm-kserve --version "0.3.8" \
-  --values openshift-ai/values.yaml
+helm install granite-8b-instruct <path-to>/vllm-kserve -f <path-to>/values.yaml 
 ```
+
+// helm install granite-8b-instruct /path/to/vllm-kserve -n namespace -f path/to/values.yaml
 
 ## Verify deployment
 
