@@ -1,0 +1,158 @@
+:experimental: true
+:imagesdir: ../assets/images
+:toc: false
+:numbered: true
+
+# Evaluating System Performance with GuideLLM
+
+In Generative AI systems, evaluating system performance including latency, throughput, and resource utilization is just as important as evaluating model accuracy or quality. Here's why:
+
+. **User Experience**: High latency leads to sluggish interactions, which is unacceptable in chatbots, copilots, and real-time applications. Users expect sub-second responses.
+
+. **Scalability**: Throughput determines how many requests a system can handle in parallel. For enterprise GenAI apps, high throughput is essential to serve multiple users or integrate with high-frequency backend processes.
+
+. **Cost Efficiency**: Slow or inefficient systems require more compute to serve the same volume of requests. Optimizing performance directly reduces cloud GPU costs and improves ROI.
+
+. **Fair Benchmarking**: A model may appear “better” in isolated evaluation, but if it requires excessive inference time or hardware, it may not be viable in production. True model evaluation must balance quality and performance.
+
+. **Deployment Readiness**: Latency and throughput impact architectural decisions (e.g., batching, caching, distributed serving). Measuring them ensures a model is viable under real-world constraints.
+
+## What is GuideLLM?
+
+GuideLLM is a toolkit for evaluating and optimizing the deployment of LLMs. By simulating real-world inference workloads, GuideLLM enables you to easily assess the performance, resource requirements, and cost implications of deploying LLMs on various hardware configurations. This approach ensures efficient, scalable, and cost-effective LLM inference serving while maintaining high service quality.
+
+GuideLLM is now officially a part of the vLLM upstream project. This toolset is one of the primary ways Red Hat internal teams are benchmarking customer models. GuideLLM will be the main framework we will recommend to our customers with the scope of model performance and optimization. 
+
+### Trusty AI vs GuideLLM
+
+Trusty AI maintains the scope of responsable AI, while GuideLLM is focused on benchmarking and model optimization. That being said, there are some current crossovers. Trusty AI incorporates lm-eval-harness and GuideLLM is roadmapped to include this test harness as well. Trusty AI will continue to be an incorporated and supported operator deployment in RHOAI. There are currently no plans to have a similar deployment method for GuideLLM. 
+
+## Set Up GuideLLM tekton pipeline
+
+There are several current ways you may deploy and use GuideLLM.
+
+* CLI tool: documented in the upstream project.
+* Python library: Not yet in current upstream documentation. You can see an example here in this guide: https://redhatquickcourses.github.io/genai-vllm/genai-vllm/1/rhoai_deploy/guide_llm.html. 
+* Kubernetes job: https://github.com/rh-aiservices-bu/guidellm-pipeline 
+* Tekton pipeline: https://github.com/rh-aiservices-bu/guidellm-pipeline 
+
+For our lab today, we will utilize the tekton pipeline on our OpenShift AI cluster. A pipeline deployment provides the following benefits:
+
+* Automation and reproducibility
+* Cloud-native / kubernetes-native
+* Scalability and resource optimization: benchmarking can be resource intensive particularly when simulating high loads or testing large models. The dynamic provisioning/de-provisioning of necessary resources with tekton can handle this well which is particularly critical for the expensive compute
+* Modular
+* Integration with existing MLOps workflows
+* Version control / auditability
+* Better handling of complex, multi-stage workflows
+
+First, apply the task and pipeline.
+[source,console,role=execute,subs=attributes+]
+----
+kubectl apply -f tekton-task.yaml
+kubectl apply -f tekton-pipeline.yaml
+----
+
+Before running the pipeline, let's review the options for GuideLLM more closely.
+
+## GuideLLM Arguments
+
+* Peruse the available GuideLLM https://github.com/neuralmagic/guidellm?tab=readme-ov-file#configurations[configuration options]. 
+* The GitHub ReadMe gives detailed information about configuration flags
+
+### Input/Output tokens
+For different use cases, you can set different standardized dataset profiles that can be passed in as arguments in GuideLLM. For example, the following variables represent input and output tokens, respectively, based on the given use case: 
+
+* **Chat (512/256)**
+* **RAG (4096/512)**
+* **Summarization (1024/256)**
+* **Code Generation (512/512)**
+
+Using these profiles, we can map specific i/o token scenarios to real-world use cases to make these runs more explainable to how this impacts applications.
+
+### --rate-type
+
+--rate-type defines the type of benchmark to run. By default GuideLLM will do a sweep of available benchmarks, but you may choose to isolate specific benchmark tests. 
+
+* synchronous: Runs a single stream of requests one at a time. --rate must not be set for this mode.
+* throughput: Runs all requests in parallel to measure the maximum throughput for the server (bounded by GUIDELLM__MAX_CONCURRENCY config argument). --rate must not be set for this mode.
+* concurrent: Runs a fixed number of streams of requests in parallel. --rate must be set to the desired concurrency level/number of streams.
+* constant: Sends requests asynchronously at a constant rate set by --rate.
+* poisson: Sends requests at a rate following a Poisson distribution with the mean set by --rate.
+* sweep: Automatically determines the minimum and maximum rates the server can support by running synchronous and throughput benchmarks, and then runs a series of benchmarks equally spaced between the two rates. The number of benchmarks is set by --rate (default is 10).
+
+### --data
+
+GuideLLM has a default dataset it uses if you do not specify anything specific. However, the dataset you use should align with the customer use case you are working on.
+
+## Execute the pipeline
+
+Run the pipeline with necessary parameters. If you chose a different model adjust the target parameter. 
+----
+tkn pipeline start guidellm-benchmark-pipeline \
+  --param target=https://granite-8b-instruct-vllm-kserve.rhaiis-evals.svc.cluster.local:8000/v1 \
+  --param model-name=granite-8b-instruct-vllm-kserve \               
+  --param processor=ibm-granite/granite-3.3-8b-instruct \       
+  --param data-config='{"type":"emulated","prompt_tokens":512,"output_tokens":128}' \
+  --workspace name=shared-workspace,claimName=guidellm-output-pvc  
+----
+
+### Evaluate Output and Adjust GuideLLM Settings
+
+GuideLLM captures the following metrics during a full sweep:
+
+. **Requests per Second**: Total requests completed per second
+
+. **Request concurrency**: average concurrent requests
+
+. **Output token per second (mean)**: output tokens per second
+
+. **Total tokens per second (mean)**: total (prompt + output) tokens per second
+
+. **Request latency in ms (mean, median, p99)**: total end to end request latency
+
+. **Time to First Token (mean, median, p99)**
+
+. **Inter-Token Latency (mean, median, p99)**
+
+. **Time per output token (mean, median, p99)**
+
+See the complete https://github.com/neuralmagic/guidellm/blob/main/docs/metrics.md[metrics documentation]. 
+
+### Reading Output
+
+#### Top Section (Benchmark Info)
+
+* Benchmark: The type of benchmark ran
+- constant@x indicates the number of requests sent constantly to the model per second.
+* Requests Made: How many requests issued (completed, incomplete or errors)
+* Token Data
+- Tok/Req: average tokens per request
+- Tok Total: total number of input/output tokens processed
+
+#### Bottom Section (Benchmark Stats)
+
+* Mean
+- Overall average
+- Good for general performance overview
+
+* Median
+- Typical experience
+- More stable, less skewed by outliers
+
+* P99
+- Worst-case real latency
+- Essential for SLOs and user experience under load
+
+### Adjusting GuideLLM Settings
+
+Depending on the results, try running GuideLLM a couple of different ways to see how the different controlled tests impact results.
+
+## Deploying the GuideLLM Workbench
+
+// Deployment for GuideLLM custom notebook image or openshift deployment
+// Engaging with GuideLLM via the workbench
+
+## Summary
+
+This activity demonstrated how to evaluate system performance using GuideLLM with a default vLLM configuration. By configuring vLLM more precisely or your chosen inference runtime, you can better align model serving with application needs—whether you’re optimizing for cost, speed, or user experience.
