@@ -1,4 +1,5 @@
 :imagesdir: ../assets/images
+[#deploy-RHEL]
 = Deploying RH Inference Server on RHEL
 
 This section will walk you through deploying RH Inference server on RHEL.

@@ -1,4 +1,5 @@
 :imagesdir: ../assets/images
+[#model-comparisons]
 = Quantized Models: Model Comparison Examples
 
 == Overview

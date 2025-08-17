@@ -1,4 +1,5 @@
 :imagesdir: ../assets/images
+[#optimization-conclusion]
 = Module 3 Conclusion: vLLM Optimization Mastery
 
 == What You've Accomplished

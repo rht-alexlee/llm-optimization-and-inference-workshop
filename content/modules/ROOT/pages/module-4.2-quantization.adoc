@@ -1,4 +1,5 @@
 :imagesdir: ../assets/images
+[#quantization-2]
 = Model Quantization Pipeline
 
 == Learning Objectives

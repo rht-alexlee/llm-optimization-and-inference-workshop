@@ -1,4 +1,6 @@
 :imagesdir: ../assets/images
+
+[#eval-intro]
 # Model Evaluation Module
 Accuracy scores and leaderboard metrics can seem impressive, but production-grade AI demands more. True success comes from evaluating models in real-world scenarios, where performance, reliability, and user satisfaction are non-negotiable.
 

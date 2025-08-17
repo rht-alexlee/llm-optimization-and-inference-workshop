@@ -1,4 +1,5 @@
 :imagesdir: ../assets/images
+[#deploy-ocp]
 = Deploying RH Inference Server on OpenShift
 
 In this module, we will use Helm to deploy RH Inference Server on OpenShift. The chart we will use deploys [vLLM](https://docs.vllm.ai/en/latest/), defaulting to using the [Red Hat AI Inference Server](https://docs.redhat.com/en/documentation/red_hat_ai_inference_server) official image.

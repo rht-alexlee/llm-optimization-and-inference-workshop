@@ -1,4 +1,5 @@
 :imagesdir: ../assets/images
+[#optimization-qualifying]
 = Enterprise Guide to LLM Optimization and Quantization 
 
 The following document will provide introductory-level content to help you identify, qualify and position LLM optimization and quantization opportunities with our enterprise clients.

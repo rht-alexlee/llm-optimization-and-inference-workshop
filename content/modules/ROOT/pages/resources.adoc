@@ -1,4 +1,6 @@
 :imagesdir: ../assets/images
+
+[#resources]
 = LLM Compressor, Model Quantization and Sparsification techniques and recipes
 
 == Existing slides

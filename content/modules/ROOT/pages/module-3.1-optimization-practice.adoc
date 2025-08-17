@@ -1,4 +1,5 @@
 :imagesdir: ../assets/images
+[#optimization-practice]
 = vLLM & Performance Tuning
 
 == Chatbot Case Study: Latency Optimization for granite-3.3-8b-instruct with vLLM

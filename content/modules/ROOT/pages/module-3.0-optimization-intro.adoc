@@ -1,4 +1,5 @@
 :imagesdir: ../assets/images
+[#optimization-intro]
 = Module 3: vLLM Performance Optimization
 
 == Introduction

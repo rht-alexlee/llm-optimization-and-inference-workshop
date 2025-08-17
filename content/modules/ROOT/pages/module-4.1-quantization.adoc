@@ -1,4 +1,5 @@
 :imagesdir: ../assets/images
+[#quantization-1]
 = Weights and Activation Quantization (W4A16)
 
 == Learning Objectives

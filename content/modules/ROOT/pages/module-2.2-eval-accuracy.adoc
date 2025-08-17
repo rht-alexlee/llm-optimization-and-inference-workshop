@@ -1,5 +1,5 @@
 :imagesdir: ../assets/images
-
+[#eval-accuracy]
 # Evaluating Model Accuracy with Trusty AI lm-eval-harness service
 
 While performance metrics like latency and throughput are critical for deploying efficient GenAI systems, **task-level accuracy and reasoning quality** are equally essential for selecting or fine-tuning a model. In this activity, we use the popular lm-eval-harness framework to evaluate how well a language model performs across established benchmarks, focusing on reasoning and subject matter understanding.

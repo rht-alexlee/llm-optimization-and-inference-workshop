@@ -1,5 +1,6 @@
 :imagesdir: ../assets/images
 
+[#eval-performance]
 # Evaluating System Performance with GuideLLM
 
 In Generative AI systems, evaluating system performance including latency, throughput, and resource utilization is just as important as evaluating model accuracy or quality. Here's why:
