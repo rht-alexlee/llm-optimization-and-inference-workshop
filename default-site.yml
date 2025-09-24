@@ -1,7 +1,7 @@
 ---
 site:
-  title: LLM optimization and inference leveraging
-  # url: https://taylorjordanNC.github.io/etx-llm-optimization-and-inference-leveraging
+  title: LLM Optimization and Inferencing Workshop
+  # url: https://rht-alexlee.github.io/llm-optimization-and-inference-workshop/
   start_page: modules::index.adoc
 
 content:
