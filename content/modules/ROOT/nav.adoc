@@ -18,5 +18,4 @@
 ** xref:reference-optimization-qualifying.adoc#optimization-qualifying[Enterprise Optimization Guide]
 ** xref:reference-quantization-technical.adoc#quantization-technical[Technical Quantization Reference]
 ** xref:reference-model-comparisons.adoc#model-comparisons[Model Comparison Examples]
-** xref:reference-llmd.adoc#llmd-overview[llm-d Technical Overview]
 ** xref:resources.adoc#resources[Additional Resources]
